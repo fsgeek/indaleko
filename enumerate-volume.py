@@ -1,5 +1,6 @@
 import os
 import datetime
+import sys
 
 def count_files_and_directories(path):
     total_files = 0
@@ -46,7 +47,7 @@ def count_files_and_directories(path):
     return total_files, total_dirs
 
 # Change the root path to the directory you want to start the enumeration from
-root_path = "C:\\Users\TonyMason"
+root_path = sys.argv[1]
 
 start = datetime.datetime.utcnow()
 
