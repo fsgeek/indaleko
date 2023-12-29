@@ -5,3 +5,43 @@ __pycache__/*
 wmiobject-list.txt
 *.log
 
+# exclude the virutal environment
+venv/*
+# ``` 
+# python 3.12.0
+# contains the following site packages:
+# ```
+# Package                              Version
+# ----------------------               -------------------
+# certifi                              2023.07.22
+# certifi-2023.07.22.dist-info         2023.07.22
+# charset-normalizer                   3.3.2
+# charset_normalizer-3.3.2.dist-info   3.3.2
+# click                                
+# click-8.1.7.dist-info                8.1.7
+# idna                                 3.4
+# idna-3.4.dist-info                   3.4
+# jaraco                               
+# jaraco.classes-3.3.0.dist-info       3.3.0
+# keyring                              
+# keyring-24.2.0.dist-info             24.2.0
+# keyrings                             
+# keyrings.alt-5.0.0.dist-info         5.0.0
+# more-itertools                       10.1.0
+# more_itertools-10.1.0.dist-info      10.1.0
+# PIL                                  10.1.0
+# Pillow-10.1.0.dist-info              10.1.0
+# pip                                  23.3.1
+# pip-23.3.1.dist-info                 23.3.1
+# pyicloud                             1.0.0
+# pyicloud-1.0.0.dist-info             1.0.0
+# requsts                              2.31.0
+# requests-2.31.0.dist-info            2.31.0
+# tzlocal                              
+# tzlocal-5.2.dist-info                5.2
+# urllib3                              2.0.7
+# urllib3-2.0.7.dist-info              2.0.7
+# ```
+
+#exclude my icloud credentials
+creds.py
