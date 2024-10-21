@@ -127,45 +127,20 @@ def main():
     pre_parser.add_argument('--configdir',
                             help='Path to the config directory',
                             default=Indaleko.default_config_dir)
-    pre_parser.add_argument('--logdir', '-l',
-                            help='Path to the log directory',
-                            default=Indaleko.default_log_dir)
-    pre_parser.add_argument('--loglevel',
-                            type=int,
-                            default=logging.DEBUG,
-                            choices=logging_levels,
-                            help='Logging level to use (lower number = more logging)')
     pre_args, _ = pre_parser.parse_known_args()
+
     config_files = IndalekoMacOSMachineConfig.find_config_files(pre_args.configdir)
     default_config_file = IndalekoMacOSMachineConfig.get_most_recent_config_file(pre_args.configdir)
-    config_file_metadata = Indaleko.extract_keys_from_file_name(default_config_file)
-    config_platform = IndalekoMacLocalIndexer.mac_platform
-    if 'platform' in config_file_metadata:
-        config_platform = config_file_metadata['platform']
-    log_file_name = IndalekoMacLocalIndexer.generate_indexer_file_name(
-        platform=config_platform,
-        indexer_name=IndalekoMacLocalIndexer.mac_local_indexer_name,
-        machine_id = config_file_metadata['machine'],
-        target_dir=pre_args.logdir,
-        timestamp=timestamp,
-        suffix='log')
-    logging.basicConfig(
-        filename=log_file_name,
-        level=pre_args.loglevel,
-        format='%(asctime)s - %(levelname)s - %(message)s',
-        force=True
-    )
+
     # Step 2: figure out the default config file
     pre_parser = argparse.ArgumentParser(add_help=False, parents=[pre_parser])
     pre_parser.add_argument('--config', choices=config_files, default=default_config_file)
     pre_parser.add_argument('--path', help='Path to the directory to index', type=str,
                             default=os.path.expanduser('~'))
-    pre_parser.add_argument('--datadir', '-d',
-                            help='Path to the data directory',
-                            default=Indaleko.default_data_dir)
     pre_args, _ = pre_parser.parse_known_args()
+    print(pre_args.config)
 
-    # Step 3: now we can load the machine configuration
+    # Step 3: now we can compute the machine config and drive GUID
     machine_config = IndalekoMacOSMachineConfig.load_config_from_file(config_file=pre_args.config)
 
     timestamp = datetime.datetime.now(datetime.timezone.utc).isoformat()
@@ -174,23 +149,39 @@ def main():
         timestamp=timestamp,
         path=pre_args.path
     )
-    output_file = IndalekoMacLocalIndexer.generate_windows_indexer_file_name(
-        platform=config_platform,
-        indexer_name=IndalekoMacLocalIndexer.mac_local_indexer_name,
-        machine_id = config_file_metadata['machine'],
-        target_dir=pre_args.datadir,
-        suffix='log')
     parser= argparse.ArgumentParser(parents=[pre_parser])
+    parser.add_argument('--datadir', '-d',
+                        help='Path to the data directory',
+                        default=Indaleko.default_data_dir)
     parser.add_argument('--output', '-o',
-                        help='name to assign to output file',
+                        help='name to assign to output directory',
                         default=output_file)
+    parser.add_argument('--logdir', '-l',
+                        help='Path to the log directory',
+                        default=Indaleko.default_log_dir)
+    parser.add_argument('--loglevel',
+                        type=int,
+                        default=logging.DEBUG,
+                        choices=logging_levels,
+                        help='Logging level to use (lower number = more logging)')
+
     args = parser.parse_args()
-    output_file = args.output
+    args.path=os.path.abspath(args.path)
+    indexer = IndalekoMacLocalIndexer(timestamp=timestamp,
+                                          path=args.path,
+                                          machine_config=machine_config)
+    output_file = indexer.generate_indexer_file_name()
+    log_file_name = indexer.generate_indexer_file_name(target_dir=args.logdir, suffix='.log')
+    logging.basicConfig(filename=os.path.join(log_file_name),
+                                level=args.loglevel,
+                                format='%(asctime)s - %(levelname)s - %(message)s',
+                                force=True)
     logging.info('Indexing %s ' , pre_args.path)
     logging.info('Output file %s ' , output_file)
     data = indexer.index()
     indexer.write_data_to_file(data, output_file)
-    for count_type, count_value in indexer.get_counts().items():
+    counts = indexer.get_counts()
+    for count_type, count_value in counts.items():
         logging.info('%s: %d', count_type, count_value)
     logging.info('Done')
 
