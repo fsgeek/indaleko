@@ -43,7 +43,7 @@ class IndalekoMacOSMachineConfig(IndalekoMachineConfig):
 
     macos_machine_config_file_prefix = 'macos-hardware-info'
 
-    macos_machine_config_uuid_str = '8a948e74-6e43-4a6e-91c0-0cb5fd97355e'
+    ._str = '8a948e74-6e43-4a6e-91c0-0cb5fd97355e'
 
     macos_machine_config_service = {
         'service_name': 'MacOSMachineConfig',
@@ -64,9 +64,19 @@ class IndalekoMacOSMachineConfig(IndalekoMachineConfig):
     @staticmethod
     def find_config_files(directory : str) -> list:
         '''This looks for configuration files in the given directory.'''
+<<<<<<< Updated upstream
         return [x for x in os.listdir(directory)
                 if x.startswith(IndalekoMacOSMachineConfig.macos_machine_config_file_prefix)
                 and x.endswith('.json')]
+=======
+        if prefix is None:
+            prefix = IndalekoMacOSMachineConfig.macos_machine_config_file_prefix
+        return IndalekoMachineConfig.find_config_files(
+            directory,
+            prefix,
+            suffix=suffix
+        )
+>>>>>>> Stashed changes
 
     @staticmethod
     def find_configs_in_db(source_id) -> list:

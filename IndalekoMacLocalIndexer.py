@@ -163,8 +163,17 @@ def main():
     machine_config = IndalekoMacOSMachineConfig.load_config_from_file(config_file=pre_args.config)
 
     timestamp = datetime.datetime.now(datetime.timezone.utc).isoformat()
+<<<<<<< Updated upstream
     indexer = IndalekoMacLocalIndexer(machine_config=machine_config, timestamp=timestamp)
     output_file = indexer.generate_windows_indexer_file_name()
+=======
+    indexer = IndalekoMacLocalIndexer(
+        machine_config=machine_config,
+        timestamp=timestamp
+    )
+    output_file = indexer.generate_indexer_file_name()
+    
+>>>>>>> Stashed changes
     parser= argparse.ArgumentParser(parents=[pre_parser])
     parser.add_argument('--datadir', '-d',
                         help='Path to the data directory',
