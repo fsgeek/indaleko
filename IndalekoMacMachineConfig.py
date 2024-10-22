@@ -19,10 +19,10 @@ import os
 import json
 import uuid
 import datetime
-import arango
 import re
 import argparse
 
+from typing import Union
 from icecream import ic
 
 from IndalekoDBConfig import IndalekoDBConfig
@@ -43,7 +43,7 @@ class IndalekoMacOSMachineConfig(IndalekoMachineConfig):
 
     macos_machine_config_file_prefix = 'macos-hardware-info'
 
-    ._str = '8a948e74-6e43-4a6e-91c0-0cb5fd97355e'
+    macos_machine_config_uuid_str = '8a948e74-6e43-4a6e-91c0-0cb5fd97355e'
 
     macos_machine_config_service = {
         'service_name': 'MacOSMachineConfig',
@@ -54,33 +54,30 @@ class IndalekoMacOSMachineConfig(IndalekoMachineConfig):
     }
 
     def __init__(self : 'IndalekoMacOSMachineConfig', **kwargs):
+        self.service_registration = IndalekoMachineConfig.register_machine_configuration_service(
+            **IndalekoMacOSMachineConfig.macos_machine_config_service
+        )
         super().__init__(**kwargs)
-        self.attributes = kwargs.get('attributes', {})
-        self.machine_id = kwargs.get('machine_id', None)
-        self.data = kwargs.get('data', None)
-        self.volume_data = kwargs.get('volume_data', {})
-        self.volume_data = {}
 
     @staticmethod
-    def find_config_files(directory : str) -> list:
+    def find_configs_in_db(source_id : Union[str, None] = None) -> list:
+        '''Find the machine configurations in the database for Windows.'''
+        if source_id is None:
+            source_id = IndalekoMacOSMachineConfig.macos_machine_config_uuid_str
+        return IndalekoMachineConfig.find_configs_in_db(source_id)
+
+    
+    @staticmethod
+    def find_config_files(directory : str, prefix : str = None, suffix : str = '.json') -> list:
         '''This looks for configuration files in the given directory.'''
-<<<<<<< Updated upstream
-        return [x for x in os.listdir(directory)
-                if x.startswith(IndalekoMacOSMachineConfig.macos_machine_config_file_prefix)
-                and x.endswith('.json')]
-=======
         if prefix is None:
-            prefix = IndalekoMacOSMachineConfig.macos_machine_config_file_prefix
+            prefix = IndalekoMacOSMachineConfig.macos_machine_config_uuid_str
         return IndalekoMachineConfig.find_config_files(
             directory,
             prefix,
             suffix=suffix
         )
->>>>>>> Stashed changes
 
-    @staticmethod
-    def find_configs_in_db(source_id) -> list:
-        return IndalekoMachineConfig.find_configs_in_db(source_id=source_id)
 
     @staticmethod
     def load_config_from_file(config_dir : str = None,
@@ -127,22 +124,18 @@ class IndalekoMacOSMachineConfig(IndalekoMachineConfig):
                 Cores = config_data['CPU']['Cores']
             )
         )
-        config = IndalekoMacOSMachineConfig(
-            Record=IndalekoRecordDataModel.IndalekoRecord.serialize(record),
-            Platform=IndalekoMachineConfigDataModel.Platform.serialize(platform),
-            Captured=IndalekoMachineConfigDataModel.Captured.serialize(captured),
-            machine_id=config_data['MachineGuid'],
-            hostname='Unknown'
-        )
-        assert config is not None, 'Failed to create configuration object'
-        if not hasattr(config, 'Platform'): # why does this happen?
-            config.Platform = platform
-            assert isinstance(config.Platform, IndalekoMachineConfigDataModel.Platform), \
-                'config is not an instance of IndalekoMachineConfigDataModel.Platform'
-        if not hasattr(config, 'Captured'): # why does this happen?
-            config.Captured = captured
-            assert isinstance(config.Captured, IndalekoMachineConfigDataModel.Captured), \
-                'config is not an instance of IndalekoMachineConfigDataModel.Captured'
+        machine_config_data = {
+            'Platform' : IndalekoMachineConfigDataModel.Platform.serialize(platform),
+            'Captured' : IndalekoMachineConfigDataModel.Captured.serialize(captured),
+            'Record' : IndalekoRecordDataModel.IndalekoRecord.serialize(record),
+        }
+        ic(config_data.keys())
+        if 'MachineUUID' not in machine_config_data:
+            machine_config_data['MachineUUID'] = config_data['MachineGuid']
+        if 'Hostname' not in machine_config_data:
+            machine_config_data['Hostname'] = config_data.get('hostname', 'Unknown')
+        config = IndalekoMacOSMachineConfig(data=machine_config_data)
+        ic(IndalekoMachineConfigDataModel.MachineConfig.serialize(config.machine_config))
         return config
 
     @staticmethod
@@ -211,13 +204,11 @@ def main():
 
         configs = IndalekoMacOSMachineConfig.find_configs_in_db(IndalekoMacOSMachineConfig.macos_machine_config_uuid_str)
         for config in configs:
-            hostname = 'unknown'
+            hostname = 'Unknown'
             if 'hostname' in config:
                 hostname = config['hostname']
             print('Configuration for machine:', hostname)
-            print(f'\t    UUID: {config["_key"]}')
-            print(f'\tCaptured: {config["Captured"]["Value"]}')
-            print(f'\tPlatform: {config["Platform"]["software"]["OS"]}')
+            print(json.dumps(config, indent=4))
         return
 
     if args.delete:
@@ -233,7 +224,8 @@ def main():
         assert os.path.exists(Indaleko.default_config_dir), f'config path {Indaleko.default_config_dir} does not exists'
         print('Listing machine configuration files in the default directory.')
         files = IndalekoMacOSMachineConfig.find_config_files(
-            Indaleko.default_config_dir)
+            Indaleko.default_config_dir,
+            IndalekoMacOSMachineConfig.macos_machine_config_file_prefix)
         for file in files:
             print(file)
         return

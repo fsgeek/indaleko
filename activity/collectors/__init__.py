@@ -33,12 +33,12 @@ if os.environ.get('INDALEKO_ROOT') is None:
     os.environ['INDALEKO_ROOT'] = current_path
     sys.path.append(current_path)
 # pylint: disable=wrong-import-position
-from activity.collectors.location.location_base import LocationCollector
-from activity.collectors.location.ip_location import IPLocation
-from activity.collectors.location.tile_location import TileLocation
-from activity.collectors.location.wifi_location import WiFiLocation
-from activity.collectors.location.windows_gps_location import WindowsGPSLocation
-from activity.collectors.known_semantic_attributes import KnownSemanticAttributes
+# from activity.collectors.location.location_base import LocationCollector
+# from activity.collectors.location.ip_location import IPLocation
+# from activity.collectors.location.tile_location import TileLocation
+# from activity.collectors.location.wifi_location import WiFiLocation
+# from activity.collectors.location.windows_gps_location import WindowsGPSLocation
+# from activity.collectors.known_semantic_attributes import KnownSemanticAttributes
 # pylint: enable=wrong-import-position
 
 __version__ = '0.1.0'
