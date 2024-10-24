@@ -33,6 +33,7 @@ if os.environ.get('INDALEKO_ROOT') is None:
     os.environ['INDALEKO_ROOT'] = current_path
     sys.path.append(current_path)
 
+from semantic.data_models.base_data_model import BaseSemanticDataModel
 from activity.collectors.location.data_models.location_data_model import BaseLocationDataModel
 
 class TileLocationDataModel(BaseLocationDataModel):
@@ -74,7 +75,6 @@ class TileLocationDataModel(BaseLocationDataModel):
     voip_state: Optional[str] = Field(None, description="State of the voip connection")
     email : str = Field(..., description="Email address associated with the Tile device")
 
-    @classmethod
     @field_validator('lost_timestamp', mode='before')
     def ensure_timezone(cls, value: datetime):
         if isinstance(value, str):
@@ -86,7 +86,6 @@ class TileLocationDataModel(BaseLocationDataModel):
 
 
     class Config:
-        '''Define configuraiton info for the data model'''
         json_schema_extra = {
             "example": {
                 "latitude": 49.2827,

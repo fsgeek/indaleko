@@ -1,5 +1,6 @@
 '''
-Init functionality for the activity data providers.
+This module defines known semantic attributes for collaboration activity data
+providers.
 
 Project Indaleko
 Copyright (C) 2024 Tony Mason
@@ -17,10 +18,9 @@ GNU Affero General Public License for more details.
 You should have received a copy of the GNU Affero General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 '''
+'''initializtion logic for the activity context system'''
 
 import os
-import importlib
-import platform
 import sys
 
 from icecream import ic
@@ -33,36 +33,24 @@ if os.environ.get('INDALEKO_ROOT') is None:
         current_path = os.path.dirname(current_path)
     os.environ['INDALEKO_ROOT'] = current_path
     sys.path.append(current_path)
+
 # pylint: disable=wrong-import-position
-from activity.collectors.location.location_base import LocationCollector
-from activity.collectors.location.ip_location import IPLocation
-from activity.collectors.location.tile_location import TileLocation
-from activity.collectors.location.wifi_location import WiFiLocation
-from activity.collectors.location.windows_gps_location import WindowsGPSLocation
-from activity.collectors.known_semantic_attributes import KnownSemanticAttributes
+from semantic.characteristics import SemanticDataCharacteristics
 # pylint: enable=wrong-import-position
 
-__version__ = '0.1.0'
+class IndalekoUnstructuredData:
+    '''
+    This is a class object for managing unstructured data in the Indaleko system.
+    '''
 
-# Discover and load all plugins
-#discovered_plugins = discover_plugins()
-#ic(discovered_plugins)
+    def __init__(self, **kwargs):
+        '''Initialize a new instance of the IndalekoUnstructuredData class object.'''
+        for key, value in kwargs.items():
+            setattr(self, key, value)
+        self.semantic_characteristics = SemanticDataCharacteristics()
+        # TODO: add semantic values?
+        ic('IndalekoUnstructuredData initialized.')
 
-# Make discovered plugins available when importing the package
-# globals().update(discovered_plugins)
-
-__all__ = [
-    'LocationCollector',
-    'IPLocation',
-    'TileLocation',
-    'WiFiLocation',
-    'WindowsGPSLocation',
-    'KnownSemanticAttributes',
-]
-
-
-# You could also provide a function to get all discovered plugins
-#def get_all_plugins():
-#    return discovered_plugins
-
-#print(discover_providers())
+    def get_semantic_characteristics(self):
+        '''Get the semantic characteristics for the unstructured data.'''
+        return self.semantic_characteristics

@@ -61,7 +61,7 @@ def setup_command(args : argparse.Namespace) -> None:
         print('Default config file already exists: checking database')
         check_command(args)
         return
-    db_config = IndalekoDBConfig()
+    db_config = IndalekoDBConfig(start=False)
     if db_config is None:
         logging.critical('Could not create IndalekoDBConfig object')
         exit(1)
@@ -148,7 +148,6 @@ def delete_command(args : argparse.Namespace) -> None:
     db_config.delete_config()
     logging.info('Database deleted')
     print(f'Database {container_name} deleted')
-
 
 def default_command(args : argparse.Namespace) -> None:
     """Default command:

@@ -1,6 +1,5 @@
 '''
-This module defines known semantic attributes for collaboration activity data
-providers.
+This module defines known characteristics for checksum data.
 
 Project Indaleko
 Copyright (C) 2024 Tony Mason
@@ -19,15 +18,7 @@ You should have received a copy of the GNU Affero General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 '''
 
-SEM_OBJECT_ID = 'bec7f956-8a49-402b-bc70-ef83c8deb27d'
-SEM_FILE_TYPE = 'b4a5a775-bba8-4697-91bf-4acf99927221'
-SEM_LAST_MODIFIED = 'ed55af45-b5a2-43de-aa89-89526189388f'
-SEM_PAGE_NUMBER = 'af847833-ff07-4eda-9753-bda0f5308bc4'
-SEM_LANGUAGES = 'af6eba9e-0993-4bab-a620-163d523e7850'
-SEM_EMPHASIZED_TEXT_CONTENTS = '12ff485a-ff8f-4042-a118-c574f5d2442c'
-SEM_EMPHASIZED_TEXT_TAGS = 'ea760948-77ec-4fb2-9c78-e827e77ff265'
-SEM_TEXT = '0d542c75-90f1-4a80-a936-8961b6264bbb'
-SEM_TYPE = '777090bf-bcf5-41ce-9b78-d710202caddb'
-
-# Unused definitions for now
-SEM_UNUSED = '5cc55605-64f2-4491-9ff1-ddfe23e964b8'
+SEMANTIC_CHECKSUM_MD5 = 'de41cd6f-5468-4eba-8493-428c5791c23e'
+SEMANTIC_CHECKSUM_SHA1 = 'e2c803f8-a362-4d9b-b026-757e3af9c3d8'
+SEMANTIC_CHECKSUM_SHA256 = '0e7123a1-b87b-4eb5-afb7-cebc38c8848d'
+SEMANTIC_CHECKSUM_DROPBOX_SHA2 = '0349dc34-ec36-4d50-b861-9de5ffb20fbf'
