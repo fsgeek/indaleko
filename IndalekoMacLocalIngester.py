@@ -65,7 +65,9 @@ class IndalekoMacLocalIngester(IndalekoIngester):
             kwargs['ingester'] = IndalekoMacLocalIngester.mac_local_ingester
         if 'input_file' not in kwargs:
             kwargs['input_file'] = None
-
+        for key, value in self.mac_local_ingester_service.items():
+            if key not in kwargs:
+                kwargs[key] = value
         super().__init__(**kwargs)
         self.input_file = kwargs['input_file']
         if 'output_file' not in kwargs:
