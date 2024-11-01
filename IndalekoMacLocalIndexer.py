@@ -164,7 +164,12 @@ def main():
 
     timestamp = datetime.datetime.now(datetime.timezone.utc).isoformat()
     indexer = IndalekoMacLocalIndexer(machine_config=machine_config, timestamp=timestamp)
-    output_file = indexer.generate_windows_indexer_file_name()
+    output_file = indexer.generate_indexer_file_name(
+        platform=IndalekoMacLocalIndexer.mac_platform,
+        indexer_name=IndalekoMacLocalIndexer.mac_local_indexer_name,
+        machine=machine_config,
+        timestamp=timestamp
+    )
     parser= argparse.ArgumentParser(parents=[pre_parser])
     parser.add_argument('--datadir', '-d',
                         help='Path to the data directory',
@@ -186,8 +191,13 @@ def main():
     indexer = IndalekoMacLocalIndexer(timestamp=timestamp,
                                           path=args.path,
                                           machine_config=machine_config)
-    output_file = indexer.generate_windows_indexer_file_name()
-    log_file_name = indexer.generate_windows_indexer_file_name(target_dir=args.logdir, suffix='.log')
+    # output_file = indexer.generate_windows_indexer_file_name()
+    log_file_name = indexer.generate_indexer_file_name(
+        platform=IndalekoMacLocalIndexer.mac_platform,
+        indexer_name=IndalekoMacLocalIndexer.mac_local_indexer_name,
+        target_dir=args.logdir, 
+        suffix='.log'
+        )
     logging.basicConfig(filename=os.path.join(log_file_name),
                                 level=args.loglevel,
                                 format='%(asctime)s - %(levelname)s - %(message)s',
