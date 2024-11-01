@@ -71,7 +71,7 @@ class IndalekoMacOSMachineConfig(IndalekoMachineConfig):
     def find_config_files(directory : str, prefix : str = None, suffix : str = '.json') -> list:
         '''This looks for configuration files in the given directory.'''
         if prefix is None:
-            prefix = IndalekoMacOSMachineConfig.macos_machine_config_uuid_str
+            prefix = IndalekoMacOSMachineConfig.macos_machine_config_file_prefix
         return IndalekoMachineConfig.find_config_files(
             directory,
             prefix,
