@@ -22,11 +22,10 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 import os
 import sys
 
-from datetime import datetime, timezone
-from typing import Any, TypeVar, Union, Optional, Type
+from typing import Any, Union
 from textwrap import dedent
 
-from pydantic import Field, field_validator, BaseModel
+from pydantic import Field, BaseModel
 
 if os.environ.get('INDALEKO_ROOT') is None:
     current_path = os.path.dirname(os.path.abspath(__file__))
@@ -35,12 +34,12 @@ if os.environ.get('INDALEKO_ROOT') is None:
     os.environ['INDALEKO_ROOT'] = current_path
     sys.path.append(current_path)
 
-T = TypeVar('T', bound='IndalekoQueryHistoryDataModel')
 
 # pylint: disable=wrong-import-position
 from data_models.base import IndalekoBaseModel  # noqa: E402
 from data_models.record import IndalekoRecordDataModel  # noqa: E402
 from query.query_processing.data_models.parser_data import ParserResults  # noqa: E402
+from query.query_processing.data_models.llm_performance_data import LLMPerformanceData  # noqa: E402
 from query.query_processing.data_models.query_input import StructuredQuery  # noqa: E402
 from query.query_processing.data_models.translator_response import TranslatorOutput  # noqa: E402
 # pylint: enable=wrong-import-position
@@ -60,12 +59,6 @@ class QueryHistoryData(BaseModel):
         description='The results of parsing the query.'
     )
 
-    LLMName: str = Field(
-        ...,
-        title='LLMName',
-        description='The name of the LLM that processed the query.'
-    )
-
     LLMQuery: StructuredQuery = Field(
         ...,
         title='LLMQuery',
@@ -76,18 +69,6 @@ class QueryHistoryData(BaseModel):
         ...,
         title='TranslatedOutput',
         description='The translated output from the LLM.'
-    )
-
-    RawResults: list[dict[str, Any]] = Field(
-        ...,
-        title='Results',
-        description='The results of the database query.'
-    )
-
-    AnalyzedResults: Union[list[dict[str, Any]], None] = Field(
-        ...,
-        title='AnalyzedResults',
-        description='The analyzed results of the database query.'
     )
 
     Facets: Union[list[dict[str, Any]], None] = Field(
@@ -102,105 +83,25 @@ class QueryHistoryData(BaseModel):
         description='The ranked results of the database query.'
     )
 
-    StartTimestamp: datetime = Field(
-        default_factory=lambda: datetime.now(timezone.utc),
-        title='StartTimestamp',
-        description='The timestamp of when the query processing started.'
-    )
-
-    EndTimestamp: datetime = Field(
-        default_factory=lambda: datetime.now(timezone.utc),
-        title='EndTimestamp',
-        description='The timestamp of when the query processing ended.'
-    )
-
-    ElapsedTime: Optional[float] = Field(
+    PerformanceData: Union[LLMPerformanceData, None] = Field(
         None,
-        title='ElapsedTime',
-        description='The elapsed time in seconds.'
+        title='PerformanceData',
+        description='The performance data for the query.'
     )
-
-    ResourceUtilization: Union[dict[str, Any], None] = Field(
-        None,
-        title='ResourceUtilization',
-        description='Resource utilization metrics such as CPU and memory usage.'
-    )
-
-    @staticmethod
-    def validate_timestamp(ts: Union[str, datetime]) -> datetime:
-        '''Ensure that the timestamp is in UTC'''
-        if isinstance(ts, str):
-            ts = datetime.fromisoformat(ts)
-        if ts.tzinfo is None:
-            ts = ts.replace(tzinfo=timezone.utc)
-        return ts
-
-    @field_validator('StartTimestamp', mode='before')
-    @classmethod
-    def ensure_starttime(cls, value: datetime):
-        return cls.validate_timestamp(value)
-
-    @field_validator('EndTimestamp', mode='before')
-    @classmethod
-    def ensure_endtime(cls, value: datetime):
-        return cls.validate_timestamp(value)
-
-    @field_validator('ElapsedTime', mode='before')
-    @classmethod
-    def calculate_elapsed_time(
-        cls: Type[T],
-        value: Union[float, None] = None,
-        values: Union[dict[str, Any], None] = None
-    ) -> float:
-        '''Calculate the elapsed time if it is not provided.'''
-        if value is None:
-            start = values.get('StartTimestamp', datetime.now(timezone.utc))
-            end = values.get('EndTimestamp', datetime.now(timezone.utc))
-            value = (end - start).total_seconds()
-        return value
 
     class Config:
         '''Sample configuration data for the data model.'''
         json_schema_extra = {
-                    "example": {
-                        "OriginalQuery": "Show me the latest performance data",
-                        "Categorization": {
-                            "Intent": "search",
-                            "Entities": {
-                                "PerformanceData": "latest"
-                            }
-                        },
-                        "ImportantTerms": {
-                            "PerformanceData": "latest"
-                        },
-                        "GeneratedAQL": "FOR doc IN PerformanceData SORT doc.Timestamp DESC LIMIT 1 RETURN doc",
-                        "LLMExplanations": {
-                            "Intent": "search",
-                            "Rationale": "The user wants to see the latest performance data.",
-                            "AlternativesConsidered": [
-                                {
-                                    "Intent": "search",
-                                    "Rationale": "The user wants to see the latest performance data."
-                                }
-                            ]
-                        },
-                        "QueryResults": {
-                            "Results": [
-                                {
-                                    "Timestamp": "2024-07-30T23:38:48.319654+00:00",
-                                    "Data": "Base64EncodedData"
-                                }
-                            ]
-                        },
-                        "StartTimestamp": "2024-07-30T23:38:48.319654+00:00",
-                        "EndTimestamp": "2024-07-30T23:38:48.319654+00:00",
-                        "ElapsedTime": 0.0,
-                        "ResourceUtilization": {
-                            "CPU": 0.0,
-                            "Memory": 0.0
-                        },
-                    }
-                }
+            "example": {
+                "OriginalQuery": "Find all the people who live in New York City.",
+                "ParsedResults": ParserResults.Config.json_schema_extra['example'],
+                "LLMQuery": StructuredQuery.Config.json_schema_extra['example'],
+                "TranslatedOutput": TranslatorOutput.Config.json_schema_extra['example'],
+                "Facets": [],
+                "RankedResults": [],
+                "PerformanceData": LLMPerformanceData.Config.json_schema_extra['example']
+            }
+        }
 
 
 class IndalekoQueryHistoryDataModel(IndalekoBaseModel):

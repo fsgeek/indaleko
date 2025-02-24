@@ -15,6 +15,7 @@ GNU Affero General Public License for more details.
 You should have received a copy of the GNU Affero General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 '''
+import json
 import os
 import sys
 
@@ -42,3 +43,28 @@ class ParserResults(BaseModel):
     Intent: LLMIntentQueryResponse
     Entities: NamedEntityCollection
     Categories: LLMCollectionCategoryQueryResponse
+
+    class Config:
+        arbitrary_types_allowed = True
+        json_schema_extra = {
+            "example": {
+                "OriginalQuery": "Find all the documents that mention the word 'elephant'.",
+                "Intent": LLMIntentQueryResponse.Config.json_schema_extra['example'],
+                "Entities": NamedEntityCollection.Config.json_schema_extra['example'],
+                "Categories": LLMCollectionCategoryQueryResponse.Config.json_schema_extra['example']
+            }
+        }
+
+
+def main():
+    '''This allows testing the data model.'''
+    print(
+        json.dumps(
+            json.loads(ParserResults(**ParserResults.Config.json_schema_extra['example']).model_dump_json()),
+            indent=2
+        )
+    )
+
+
+if __name__ == '__main__':
+    main()

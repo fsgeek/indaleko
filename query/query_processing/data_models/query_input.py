@@ -80,3 +80,20 @@ class StructuredQuery(BaseModel):
         description='The indices for the database collections.'
         'Note that this does not include the primary key index, which is always present.'
     )
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "original_query": "Show me all the documents for Tony.",
+                "intent": LLMIntentTypeEnum.SEARCH,
+                "entities": NamedEntityCollection.Config.json_schema_extra['example'],
+                "db_info": [
+                    IndalekoCollectionMetadataDataModel.Config.json_schema_extra['example']
+                ],
+                "db_indices": {
+                    "collection_name": [
+                        IndalekoCollectionIndexDataModel.Config.json_schema_extra['example']
+                    ]
+                }
+            }
+        }

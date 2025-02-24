@@ -97,28 +97,32 @@ class LLMIntentQueryResponse(BaseModel):
         )
     )
 
-    confidence: float = Field(
-        ...,
-        title='Confidence',
-        description="The confidence score of the intent classification, ranging from 0 to 1"
-    )
-
     suggestion: Union[str, None] = Field(
         None,
         title='Suggestion',
         description="Suggest ways to improve the intent classification process, "
-        "such as by adding an additional class that might be useful, or a better prompt version.")
+        "such as by adding an additional class that might be useful, or a better prompt version."
+    )
 
-    model_config = ConfigDict(
-        json_schema_extra={
+    class Config:
+        json_schema_extra = {
             'required': [
                 'intent',
                 'rationale',
                 'alternatives_considered',
                 'confidence'
-            ]
+            ],
+            "example": {
+                "intent": "search",
+                "confidence": 0.95,
+                "rationale": "The user query indicated a search intent.",
+                "alternatives_considered": [
+                    {
+                        "example": "this is an example, so it is static and nothing else was considered"
+                    }
+                ]
+            }
         }
-    )
 
 
 class LLMFilterConstraintQueryResponse(BaseModel):

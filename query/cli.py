@@ -44,6 +44,7 @@ from query.query_processing.data_models.query_input import StructuredQuery
 from query.query_processing.nl_parser import NLParser
 from query.query_processing.query_translator.aql_translator import AQLTranslator
 from query.query_processing.query_history import QueryHistory
+from query.query_processing.data_models.llm_performance_data import LLMPerformanceData
 from query.query_processing.data_models.parser_data import ParserResults
 from query.query_processing.data_models.translator_input import TranslatorInput
 from query.result_analysis.facet_generator import FacetGenerator
@@ -159,9 +160,6 @@ class IndalekoQueryCLI(IndalekoBaseCLI):
             batch = True
 
         while True:
-            # Need UPI information about the database
-            #
-
             # Get query from user
             if batch:
                 if len(batch_queries) == 0:
@@ -176,11 +174,14 @@ class IndalekoQueryCLI(IndalekoBaseCLI):
             # Log the query
             # self.logging_service.log_query(user_query)
             start_time = datetime.now(timezone.utc)
+            intermediate_times = {}
+            resource_utilization_data = {}
 
             # Process the query
             ic(f'Parsing query: {user_query}')
             parsed_query = self.nl_parser.parse(query=user_query)
             ParserResults.model_validate(parsed_query)
+            intermediate_times['parse'] = datetime.now(timezone.utc)
 
             # Only support search for now.
             assert parsed_query.Intent.intent == 'search', \
@@ -190,6 +191,7 @@ class IndalekoQueryCLI(IndalekoBaseCLI):
 
             # Map entities to database attributes
             entity_mappings = self.map_entities(parsed_query.Entities)
+            intermediate_times['map_entities'] = datetime.now(timezone.utc)
 
             # Use the categories to obtain the metadata attributes
             # of the corresponding collection
@@ -197,6 +199,7 @@ class IndalekoQueryCLI(IndalekoBaseCLI):
                 entity.collection for entity in parsed_query.Categories.category_map
             ]
             collection_metadata = self.get_collection_metadata(collection_categories)
+            intermediate_times['get_metadata'] = datetime.now(timezone.utc)
 
             # Let's get the index data
             indices = {}
@@ -218,6 +221,8 @@ class IndalekoQueryCLI(IndalekoBaseCLI):
                         if 'deduplicate' in index:
                             kwargs['Deduplicate'] = index['deduplicate']
                         indices[category].append(IndalekoCollectionIndexDataModel(**kwargs))
+
+            intermediate_times['get_indices'] = datetime.now(timezone.utc)
 
             # Obtain information about the database based upon
             # the parsed results
@@ -245,37 +250,47 @@ class IndalekoQueryCLI(IndalekoBaseCLI):
             )
 
             translated_query = self.query_translator.translate(query_data)
-            print(translated_query.model_dump_json(indent=2))
+            intermediate_times['translate'] = datetime.now(timezone.utc)
 
             # Execute the query
             raw_results = self.query_executor.execute(translated_query.aql_query, self.db_config)
+            intermediate_times['execute'] = datetime.now(timezone.utc)
 
             # Analyze and refine results
             analyzed_results = self.metadata_analyzer.analyze(raw_results)
+            # for now, we don't capture these because we don't do anything here.
+            # intermediate_times['analyze'] = datetime.now(timezone.utc)
             facets = self.facet_generator.generate(analyzed_results)
+            # for now, we don't capture these because we don't do anything here.
+            # intermediate_times['facets'] = datetime.now(timezone.utc)
             ranked_results = self.result_ranker.rank(analyzed_results)
-
-            # Display results to user
-            self.display_results(ranked_results, facets)
+            # for now, we don't capture these because we don't do anything here.
+            # intermediate_times['rank'] = datetime.now(timezone.utc)
 
             # Update query history
             end_time = datetime.now(timezone.utc)
-            time_diference = end_time - start_time
             query_history = QueryHistoryData(
                 OriginalQuery=user_query,
                 ParsedResults=parsed_query,
-                LLMName=self.llm_connector.get_llm_name(),
                 LLMQuery=structured_query,
                 TranslatedOutput=translated_query,
-                RawResults=raw_results,
-                AnalyzedResults=analyzed_results,
                 Facets=facets,
                 RankedResults=ranked_results,
-                StartTimestamp=start_time,
-                EndTimestamp=end_time,
-                ElapsedTime=time_diference.total_seconds(),
+                PerformanceData=LLMPerformanceData(
+                    LLMName=self.llm_connector.get_llm_name(),
+                    LLMOperation=translated_query.Intent.intent,
+                    RawResults=raw_results,
+                    AnalyzedResults=analyzed_results,
+                    StartTime=start_time,
+                    IntermediateTimes=intermediate_times,
+                    EndTimes=end_time,
+                    ResourceUtilization=resource_utilization_data,
+                ),
             )
             self.query_history.add(query_history)
+
+            # Display results to user
+            self.display_results(ranked_results, facets)
 
             # Check if user wants to continue
             if not self.continue_session():
