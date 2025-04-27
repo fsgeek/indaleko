@@ -37,19 +37,20 @@ if os.environ.get("INDALEKO_ROOT") is None:
     sys.path.append(current_path)
 
 # pylint: disable=wrong-import-position
-from data_models import IndalekoRecordDataModel
+from data_models import IndalekoRecordDataModel, IndalekoSemanticAttributeDataModel
+from data_models.storage_semantic_attributes import StorageSemanticAttributes
 from db import IndalekoServiceManager
-from platforms.unix import UnixFileAttributes
+from platforms.posix import IndalekoPosix
 from platforms.windows_attributes import IndalekoWindows
-from storage.i_object import IndalekoObject
 from storage.collectors.cloud.drop_box import IndalekoDropboxCloudStorageCollector
-from storage.recorders.data_model import IndalekoStorageRecorderDataModel
+from storage.i_object import IndalekoObject
 from storage.recorders.cloud.cloud_base import BaseCloudStorageRecorder
-from utils.misc.file_name_management import (
-    find_candidate_files,
-    extract_keys_from_file_name,
-)
+from storage.recorders.data_model import IndalekoStorageRecorderDataModel
 from utils.misc.data_management import encode_binary_data
+from utils.misc.file_name_management import (
+    extract_keys_from_file_name,
+    find_candidate_files,
+)
 
 # pylint: enable=wrong-import-position
 
@@ -92,9 +93,7 @@ class IndalekoDropboxCloudStorageRecorder(BaseCloudStorageRecorder):
         if "user_id" not in kwargs:
             assert "input_file" in kwargs
             keys = extract_keys_from_file_name(kwargs["input_file"])
-            assert (
-                "userid" in keys
-            ), f'userid not found in input file name: {kwargs["input_file"]}'
+            assert "userid" in keys, f'userid not found in input file name: {kwargs["input_file"]}'
             self.user_id = keys["userid"]
         else:
             self.user_id = kwargs["user_id"]
@@ -151,15 +150,11 @@ class IndalekoDropboxCloudStorageRecorder(BaseCloudStorageRecorder):
         timestamps = []
         size = 0
         if "FolderMetadata" in data:
-            unix_file_attributes = UnixFileAttributes.FILE_ATTRIBUTES["S_IFDIR"]
-            windows_file_attributes = IndalekoWindows.FILE_ATTRIBUTES[
-                "FILE_ATTRIBUTE_DIRECTORY"
-            ]
+            posix_file_attributes = IndalekoPosix.FILE_ATTRIBUTES["S_IFDIR"]
+            windows_file_attributes = IndalekoWindows.FILE_ATTRIBUTES["FILE_ATTRIBUTE_DIRECTORY"]
         if "FileMetadata" in data:
-            unix_file_attributes = UnixFileAttributes.FILE_ATTRIBUTES["S_IFREG"]
-            windows_file_attributes = IndalekoWindows.FILE_ATTRIBUTES[
-                "FILE_ATTRIBUTE_NORMAL"
-            ]
+            posix_file_attributes = IndalekoPosix.FILE_ATTRIBUTES["S_IFREG"]
+            windows_file_attributes = IndalekoWindows.FILE_ATTRIBUTES["FILE_ATTRIBUTE_NORMAL"]
         # ArangoDB is VERY fussy about the timestamps.  If there is no TZ
         # data, it will fail the schema validation.
         timestamps = [
@@ -186,9 +181,7 @@ class IndalekoDropboxCloudStorageRecorder(BaseCloudStorageRecorder):
                 test_path = path + name
             else:
                 test_path = path + "/" + name
-            assert (
-                test_path == data["path_display"]
-            ), f'test_path: {test_path}, path_display: {data["path_display"]}'
+            assert test_path == data["path_display"], f'test_path: {test_path}, path_display: {data["path_display"]}'
         else:
             # unexpected, so let's dump some data
             ic("Path does not end with child name")
@@ -200,6 +193,22 @@ class IndalekoDropboxCloudStorageRecorder(BaseCloudStorageRecorder):
         local_id = data.get("id")
         if local_id and local_id.startswith("id:"):
             local_id = local_id[3:]
+        semantic_attributes = []
+        if name:
+            semantic_attributes.extend(
+                BaseCloudStorageRecorder.map_name_to_semantic_attributes(name),
+            )
+            if "FileMetadata" in data:
+                semantic_attributes.extend(
+                    BaseCloudStorageRecorder.map_file_name_to_semantic_attributes(name),
+                )
+        if "content_hash" in data:
+            semantic_attributes.append(
+                IndalekoSemanticAttributeDataModel(
+                    Identifier=StorageSemanticAttributes.STORAGE_ATTRIBUTES_CHECKSUM_DROPBOX,
+                    Value=data["content_hash"],
+                ),
+            )
         kwargs = {
             "Record": IndalekoRecordDataModel(
                 SourceIdentifier=self.source,
@@ -210,17 +219,13 @@ class IndalekoDropboxCloudStorageRecorder(BaseCloudStorageRecorder):
             "ObjectIdentifier": data["ObjectIdentifier"],
             "Timestamps": timestamps,
             "Size": size,
-            "SemanticAttributes": None,  # add some perhaps?
+            "SemanticAttributes": semantic_attributes,
             "Label": name,
             "LocalPath": path,
             "LocalIdentifier": local_id,
             "Volume": None,
-            "PosixFileAttributes": UnixFileAttributes.map_file_attributes(
-                unix_file_attributes
-            ),
-            "WindowsFileAttributes": IndalekoWindows.map_file_attributes(
-                windows_file_attributes
-            ),
+            "PosixFileAttributes": posix_file_attributes,
+            "WindowsFileAttributes": windows_file_attributes,
         }
         obj = IndalekoObject(**kwargs)
         return obj
