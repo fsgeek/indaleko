@@ -36,9 +36,19 @@ class IndalekoConstants:
     project_name = "Indaleko"
     default_prefix = "indaleko"
     default_db_config_file_name = f"{default_prefix}-db-config.ini"
-    default_data_dir = os.path.join(os.environ.get("INDALEKO_ROOT", "."), "data")
-    default_config_dir = os.path.join(os.environ.get("INDALEKO_ROOT", "."), "config")
-    default_log_dir = os.path.join(os.environ.get("INDALEKO_ROOT", "."), "logs")
+    # Allow overrides via environment variables
+    default_data_dir = os.environ.get(
+        "INDALEKO_DATA_DIR",
+        os.path.join(os.environ.get("INDALEKO_ROOT", "."), "data"),
+    )
+    default_config_dir = os.environ.get(
+        "INDALEKO_CONFIG_DIR",
+        os.path.join(os.environ.get("INDALEKO_ROOT", "."), "config"),
+    )
+    default_log_dir = os.environ.get(
+        "INDALEKO_LOG_DIR",
+        os.path.join(os.environ.get("INDALEKO_ROOT", "."), "logs"),
+    )
 
     service_type_test = "Test"
     service_type_machine_configuration = "Machine Configuration"
