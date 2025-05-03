@@ -98,3 +98,17 @@ activity/collectors/storage/
 - Easier to add new providers in the future (e.g., Box, iCloud)
 - Better isolation of provider-specific code and dependencies
 - Examples are consistently located relative to their collectors
+
+## Project-wide Reorganization Plan
+
+The following high-level steps will be performed across the entire repository:
+
+1. Move legacy code in `old/` directory to `archive/` to clearly separate deprecated code.
+2. Group top-level scripts and batch files into a centralized `scripts/` directory, removing duplicates.
+3. Ensure every Python package directory contains an `__init__.py`, updating imports for consistency.
+4. Consolidate all configuration files under `config/`, archiving or removing obsolete configs.
+5. Clean up unused files and directories (e.g., old notebooks, logs, deprecated tools).
+6. Review and update documentation (README, markdown guides) to reflect the new structure.
+7. Gradually reconcile overlapping functionality across modules (e.g., duplicate collectors), merging or deprecating as needed.
+
+Each of these steps will be implemented incrementally as focused commits, ensuring the test suite passes before proceeding to the next step.
