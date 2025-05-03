@@ -137,9 +137,10 @@ class GoogleDriveActivityCollector(CollectorBase):
         )
 
         # Default paths for state and output files
-        data_dir = os.path.join(os.environ.get("INDALEKO_ROOT", "."), "data")
-        if not os.path.exists(data_dir):
-            os.makedirs(data_dir, exist_ok=True)
+        # Use default data directory from constants
+        from constants.values import IndalekoConstants  # noqa: E402
+        data_dir = IndalekoConstants.default_data_dir
+        os.makedirs(data_dir, exist_ok=True)
 
         self.state_file = kwargs.get(
             "state_file",
