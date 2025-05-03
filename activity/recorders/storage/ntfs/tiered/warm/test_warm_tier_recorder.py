@@ -687,7 +687,12 @@ class TestWarmTierTransitionIntegration(unittest.TestCase):
         import tempfile, shutil
 
         # Path to test DB config (adjust as needed)
-        config_path = os.path.join(os.environ.get("INDALEKO_ROOT", ""), "config", "indaleko-db-config-local.ini")
+        # Determine config path using default constants
+        from constants.values import IndalekoConstants  # noqa: E402
+        config_path = os.path.join(
+            IndalekoConstants.default_config_dir,
+            "indaleko-db-config-local.ini",
+        )
         if not os.path.exists(config_path):
             raise unittest.SkipTest(f"Integration DB config not found: {config_path}")
         # Connect to DB
