@@ -33,3 +33,4 @@ upload-notes.md
 .venv*
 uv.lock
 ntfs-journal-output.txt
+codex-runner.sh
