@@ -38,7 +38,7 @@ if os.environ.get("INDALEKO_ROOT") is None:
 from activity.collectors.storage.data_models.storage_activity_data_model import (
     StorageActivityType,
 )
-from activity.collectors.storage.ntfs.ntfs_collector import NtfsStorageActivityCollector
+from activity.collectors.storage.local.windows.ntfs.ntfs_collector import NtfsStorageActivityCollector
 from activity.recorders.storage.ntfs.ntfs_recorder import NtfsStorageActivityRecorder
 
 # pylint: enable=wrong-import-position

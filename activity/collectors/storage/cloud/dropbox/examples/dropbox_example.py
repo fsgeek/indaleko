@@ -38,7 +38,7 @@ if os.environ.get("INDALEKO_ROOT") is None:
 from activity.collectors.storage.data_models.storage_activity_data_model import (
     StorageActivityType,
 )
-from activity.collectors.storage.dropbox.dropbox_collector import (
+from activity.collectors.storage.cloud.dropbox.dropbox_collector import (
     DropboxStorageActivityCollector,
 )
 from activity.recorders.storage.dropbox.dropbox_recorder import (
