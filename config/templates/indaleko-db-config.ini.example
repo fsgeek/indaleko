@@ -1,0 +1,13 @@
+[database]
+# Database configuration for Indaleko
+# For SQLite example:
+# type = sqlite
+# database = /path/to/your/indaleko.db
+#
+# For ArangoDB example:
+# type = arango
+# host = localhost
+# port = 8529
+# username = your_username
+# password = your_password
+# database = indaleko
