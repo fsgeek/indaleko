@@ -102,7 +102,7 @@ The integration point is the `_record_activities` method which passes collected 
 
 The implementation uses the new centralized logging system:
 
-- **YAML-based Configuration**: Uses the repository-wide `logging.yaml` config
+- **YAML-based Configuration**: Uses the repository-wide `config/logging.yaml` config
 - **Unified Log Formats**: Consistent formatting across all CLI tools
 - **Console & File Handlers**: Logs to both console and rotating files
 - **Debug-level Control**: Automatically adjusts log level based on `--debug` flag
