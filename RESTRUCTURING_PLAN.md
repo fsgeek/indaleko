@@ -112,3 +112,10 @@ The following high-level steps will be performed across the entire repository:
 7. Gradually reconcile overlapping functionality across modules (e.g., duplicate collectors), merging or deprecating as needed.
 
 Each of these steps will be implemented incrementally as focused commits, ensuring the test suite passes before proceeding to the next step.
+
+8. Domain-specific collector reorganization under `activity/collectors/`:
+   - Ambient: standardize structure under `ambient/` (data_models, media, music, smart_thermostat), remove redundant imports, update module paths.
+   - Collaboration: ensure providers under `collaboration/{calendar,discord,outlook}`, align data_models folders and importer paths.
+   - Location: consolidate provider directories under `location/`, unify data_models placement and update imports.
+   - Network: review `network/` collectors, add missing packages, clarify module names.
+   - Task Activity: reorganize `task_activity/` with consistent naming and data_model placement.
