@@ -24,13 +24,6 @@ import platform
 import sys
 from pathlib import Path
 
-if os.environ.get("INDALEKO_ROOT") is None:
-    current_path = Path(__file__).parent.resolve()
-    while not (Path(current_path) / "Indaleko.py").exists():
-        current_path = Path(current_path).parent
-    os.environ["INDALEKO_ROOT"] = str(current_path)
-    sys.path.insert(0, str(current_path))
-
 
 # pylint: disable=wrong-import-position
 
