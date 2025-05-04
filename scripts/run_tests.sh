@@ -2,9 +2,8 @@
 # Run the test suite for Indaleko
 set -euo pipefail
 
-# Upgrade pip and install test dependencies
-python3 -m pip install --upgrade pip
-pip install .[test]
+# Setup environment (installs dependencies via uv)
+python3 utils/setup_env.py --force-install --reset-lock-file
 
-# Execute pytest with any passed arguments
-pytest "$@"
+# Execute pytest using uv to ensure venv environment, passing any arguments
+uv pytest "$@"
