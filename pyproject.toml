@@ -64,7 +64,7 @@ include = ["indaleko*"]
 
 [project.optional-dependencies]
 test = ["pytest>=6.0"]
-dev = ["black", "flake8", "pre-commit"]
+dev = ["black", "flake8", "pre-commit", "mypy>=1.0"]
 windows = ['winsdk==1.0.0b10']
 gui = ["streamlit>=1.38.0", "plotly>=5.22.0", "pydeck>=0.8.0"]
 
@@ -76,6 +76,10 @@ testpaths = ["tests"]
 
 [tool.black]
 line-length = 120
+
+[tool.mypy]
+python_version = "3.12"
+ignore_missing_imports = true
 # Target Python 3.12 for grammar support in Black
 target-version = ['py312']
 
