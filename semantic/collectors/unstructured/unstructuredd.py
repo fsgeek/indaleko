@@ -30,12 +30,6 @@ import uuid
 from icecream import ic
 
 #  Find Indaleko Root
-if os.environ.get("INDALEKO_ROOT") is None:
-    current_path = os.path.dirname(os.path.abspath(__file__))
-    while not os.path.exists(os.path.join(current_path, "Indaleko.py")):
-        current_path = os.path.dirname(current_path)
-    os.environ["INDALEKO_ROOT"] = current_path
-    sys.path.append(current_path)
 
 # Indaleko imports
 # pylint: disable=wrong-import-position

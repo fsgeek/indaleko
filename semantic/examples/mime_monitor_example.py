@@ -27,12 +27,6 @@ import uuid
 from typing import Any
 
 # Import path setup
-if os.environ.get("INDALEKO_ROOT") is None:
-    current_path = os.path.dirname(os.path.abspath(__file__))
-    while not os.path.exists(os.path.join(current_path, "Indaleko.py")):
-        current_path = os.path.dirname(current_path)
-    os.environ["INDALEKO_ROOT"] = current_path
-    sys.path.append(current_path)
 
 # pylint: disable=wrong-import-position
 
