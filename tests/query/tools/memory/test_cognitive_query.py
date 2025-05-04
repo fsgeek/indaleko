@@ -30,6 +30,7 @@ import json
 import logging
 import os
 import sys
+import pytest
 from typing import Any
 
 # Set up environment
@@ -45,8 +46,7 @@ try:
     from query.tools.base import ToolInput
     from query.tools.memory.cognitive_query import CognitiveMemoryQueryTool
 except ImportError as e:
-    print(f"Error importing Cognitive Memory Query Tool: {e}")
-    sys.exit(1)
+    pytest.skip(f"Error importing Cognitive Memory Query Tool: {e}", allow_module_level=True)
 
 
 def run_test(

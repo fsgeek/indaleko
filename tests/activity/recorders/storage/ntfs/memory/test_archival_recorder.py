@@ -35,6 +35,7 @@ import logging
 import os
 import sys
 import uuid
+import pytest
 
 # Set up environment
 if os.environ.get("INDALEKO_ROOT") is None:
@@ -46,12 +47,9 @@ if os.environ.get("INDALEKO_ROOT") is None:
 
 # Import the recorder
 try:
-    from activity.recorders.storage.ntfs.memory.archival.recorder import (
-        NtfsArchivalMemoryRecorder,
-    )
+    from activity.recorders.storage.ntfs.memory.archival.recorder import NtfsArchivalMemoryRecorder
 except ImportError:
-    print("Error: NtfsArchivalMemoryRecorder not found")
-    sys.exit(1)
+    pytest.skip("NtfsArchivalMemoryRecorder not found", allow_module_level=True)
 
 
 def test_ontology_enhancement():

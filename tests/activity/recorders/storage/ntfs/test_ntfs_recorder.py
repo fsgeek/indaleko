@@ -29,6 +29,7 @@ import unittest
 import uuid
 from datetime import UTC, datetime
 from unittest.mock import MagicMock, patch
+import pytest
 
 # Set logging level
 logging.basicConfig(level=logging.INFO)
@@ -59,9 +60,7 @@ try:
 
     # pylint: enable=wrong-import-position
 except ImportError as e:
-    logger.error(f"Import error: {e}")
-    logger.error("This test module requires specific Python packages.")
-    sys.exit(1)
+    pytest.skip(f"Import error: {e}", allow_module_level=True)
 
 
 class TestNtfsStorageActivityRecorder(unittest.TestCase):

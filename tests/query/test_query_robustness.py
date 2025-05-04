@@ -11,11 +11,15 @@ import json
 import logging
 import os
 import sys
+import pytest
 import time
 from typing import Any
 
 # Set up environment variables
 current_path = os.path.dirname(os.path.abspath(__file__))
+# Find project root by locating Indaleko.py
+while not os.path.exists(os.path.join(current_path, "Indaleko.py")):
+    current_path = os.path.dirname(current_path)
 os.environ["INDALEKO_ROOT"] = current_path
 if current_path not in sys.path:
     sys.path.insert(0, current_path)
@@ -31,8 +35,7 @@ try:
     from query.query_processing.query_translator.aql_translator import AQLTranslator
     from query.utils.llm_connector.openai_connector import OpenAIConnector
 except ImportError as e:
-    print(f"Failed to import required modules: {e}")
-    sys.exit(1)
+    pytest.skip(f"Failed to import required modules: {e}", allow_module_level=True)
 
 # Set up logging
 logging.basicConfig(

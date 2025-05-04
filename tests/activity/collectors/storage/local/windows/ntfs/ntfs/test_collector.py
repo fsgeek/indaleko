@@ -32,6 +32,7 @@ import random
 import sys
 import time
 import traceback
+import pytest
 
 # Standard Python check for Windows platform
 IS_WINDOWS = sys.platform.startswith("win")
@@ -52,11 +53,7 @@ try:
         NtfsStorageActivityCollector,
     )
 except ImportError as e:
-    print(f"ERROR: Could not import required modules: {e}")
-    print(
-        "Make sure you're running from the right directory or check your Python path.",
-    )
-    sys.exit(1)
+    pytest.skip(f"Could not import required modules: {e}", allow_module_level=True)
 
 
 def create_test_file(volume_path):

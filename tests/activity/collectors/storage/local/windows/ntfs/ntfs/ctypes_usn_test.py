@@ -29,13 +29,13 @@ import os
 import struct
 import sys
 import time
+import pytest
 from ctypes import wintypes
 from datetime import UTC, datetime
 
-# Make sure we're on Windows
+# Skip test on non-Windows platforms
 if not sys.platform.startswith("win"):
-    print("This script only works on Windows")
-    sys.exit(1)
+    pytest.skip("This test only works on Windows", allow_module_level=True)
 
 # Windows API constants
 FSCTL_QUERY_USN_JOURNAL = 0x900F4
