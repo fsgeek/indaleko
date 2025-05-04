@@ -17,3 +17,7 @@ GNU Affero General Public License for more details.
 You should have received a copy of the GNU Affero General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
+# Package activity.collectors.task_activity
+from activity.collectors.task_activity.task_collector import TaskActivityCollector
+
+__all__ = ["TaskActivityCollector"]
