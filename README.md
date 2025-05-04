@@ -57,6 +57,38 @@ private index with rich semantic and activity data provides a robust base on
 which to build "personal archiving tools" that enabling easier finding of
 relevant information.
 
+## Getting Started
+
+Follow these steps to set up and run Project Indaleko locally:
+
+1. Install Python 3.12 or newer and Git.
+2. Clone this repository and `cd` into its root:
+   ```bash
+   git clone <repo-url>
+   cd indaleko
+   ```
+3. Populate your configuration:
+   ```bash
+   # Copy example templates into config/
+   cp config/templates/*.*.example config/
+   # Edit config/indaleko-db-config.ini and other files with your credentials
+   ```
+4. Install dependencies and set up the dev environment:
+   ```bash
+   make setup
+   ```
+5. Run linting and formatting checks:
+   ```bash
+   make lint
+   make format  # (formats code with Black)
+   ```
+6. Execute the test suite:
+   ```bash
+   make test
+   ```
+
+Alternatively, you can run `scripts/run_tests.sh` to install test requirements and run pytest.
+
 ## Architecture
 
 Indaleko is designed around a modular architecture.  The goals of this
