@@ -73,18 +73,32 @@ Follow these steps to set up and run Project Indaleko locally:
    cp config/templates/*.*.example config/
    # Edit config/indaleko-db-config.ini and other files with your credentials
    ```
-4. Install dependencies and set up the dev environment:
+4. Install dependencies and set up the dev environment (using `uv`):
    ```bash
    make setup
    ```
+   This creates a virtual environment and installs dependencies according to `pyproject.toml`. To work within this environment interactively, run:
+   ```bash
+   uv shell
+   ```
+   Now your shell is in the project’s virtual environment, and you can run the subsequent commands directly.
 5. Run linting and formatting checks:
    ```bash
-   make lint
-   make format  # (formats code with Black)
+   make lint       # runs pre-commit hooks via uv
+   make format     # formats code with Black via uv
+   ```
+   Or run them directly under the venv:
+   ```bash
+   uv run pre-commit run --all-files
+   uv run black .
    ```
 6. Execute the test suite:
    ```bash
-   make test
+   make test       # runs pytest via uv
+   ```
+   Or:
+   ```bash
+   uv run pytest
    ```
 
 Alternatively, you can run `scripts/run_tests.sh` to install test requirements and run pytest.
