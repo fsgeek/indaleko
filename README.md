@@ -1,5 +1,8 @@
 # Project Indaleko
 
+<!-- Replace <OWNER> and <REPO> with your GitHub user/org and repo name -->
+[![CI](https://github.com/<OWNER>/<REPO>/actions/workflows/ci.yml/badge.svg)](https://github.com/<OWNER>/<REPO>/actions/workflows/ci.yml)
+
 ## Recent Changes
 
 April 15, 2025
