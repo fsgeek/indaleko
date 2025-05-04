@@ -21,20 +21,13 @@ You should have received a copy of the GNU Affero General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 
-import os
-import sys
+ 
 
 from pathlib import Path
 
 from pydantic import Field
 
 
-if os.environ.get("INDALEKO_ROOT") is None:
-    current_path = Path(__file__).parent.resolve()
-    while not (Path(current_path) / "Indaleko.py").exists():
-        current_path = Path(current_path).parent
-    os.environ["INDALEKO_ROOT"] = str(current_path)
-    sys.path.insert(0, str(current_path))
 
 # pylint: disable=wrong-import-position
 from activity.data_model.activity import IndalekoActivityDataModel

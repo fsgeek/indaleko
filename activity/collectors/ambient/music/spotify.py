@@ -21,8 +21,7 @@ You should have received a copy of the GNU Affero General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 
-import os
-import sys
+ 
 import uuid
 
 from datetime import UTC, datetime, timedelta
@@ -35,12 +34,6 @@ from icecream import ic
 from spotipy.oauth2 import SpotifyOAuth
 
 
-if os.environ.get("INDALEKO_ROOT") is None:
-    current_path = Path(__file__).parent.resolve()
-    while not (Path(current_path) / "Indaleko.py").exists():
-        current_path = Path(current_path).parent
-    os.environ["INDALEKO_ROOT"] = str(current_path)
-    sys.path.insert(0, str(current_path))
 
 # pylint: disable=wrong-import-position
 from Indaleko import Indaleko

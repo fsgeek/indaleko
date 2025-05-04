@@ -21,19 +21,12 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 import argparse
 import datetime
 import logging
-import os
-import sys
+
 from abc import abstractmethod
 from typing import Any
 
 from icecream import ic
 
-if os.environ.get("INDALEKO_ROOT") is None:
-    current_path = os.path.dirname(os.path.abspath(__file__))
-    while not os.path.exists(os.path.join(current_path, "Indaleko.py")):
-        current_path = os.path.dirname(current_path)
-    os.environ["INDALEKO_ROOT"] = current_path
-    sys.path.append(current_path)
 
 from activity.collectors.base import CollectorBase
 

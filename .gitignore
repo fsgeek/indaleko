@@ -1,5 +1,10 @@
 data/*
-config*/*
+# ignore real configuration files; templates are in config/templates
+config/*.json
+config/*.ini
+# un-ignore the templates folder
+!config/templates/
+!config/templates/**
 logs*/*
 __pycache__/*
 */__pycache__/*
@@ -34,3 +39,4 @@ upload-notes.md
 uv.lock
 ntfs-journal-output.txt
 codex-runner.sh
+continuation_id.txt
