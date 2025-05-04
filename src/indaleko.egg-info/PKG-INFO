@@ -58,6 +58,7 @@ Provides-Extra: dev
 Requires-Dist: black; extra == "dev"
 Requires-Dist: flake8; extra == "dev"
 Requires-Dist: pre-commit; extra == "dev"
+Requires-Dist: mypy>=1.0; extra == "dev"
 Provides-Extra: windows
 Requires-Dist: winsdk==1.0.0b10; extra == "windows"
 Provides-Extra: gui

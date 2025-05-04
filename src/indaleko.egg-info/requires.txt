@@ -52,6 +52,7 @@ win32more==0.5.10
 black
 flake8
 pre-commit
+mypy>=1.0
 
 [gui]
 streamlit>=1.38.0

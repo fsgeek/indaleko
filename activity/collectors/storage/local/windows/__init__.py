@@ -1,0 +1,1 @@
+# Package for Windows local storage collectors

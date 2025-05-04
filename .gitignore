@@ -1,5 +1,8 @@
 data/*
 # ignore real configuration files; templates are in config/templates
+config/elasticsearch-wam-msi.txt
+config/http_ca.crt
+config/msgraph-cache.bin
 config/*.json
 config/*.ini
 # un-ignore the templates folder

@@ -151,7 +151,7 @@ class SetupIndalekoDevelopmentEnvironment:
             print(f"Unsupported platform: {system}")
             sys.exit(1)
 
-    def check_python_version(self, min_version=(3, 12)):
+    def check_python_version(self, min_version=(3, 0)):
         """Ensure Python version is at least 3.12."""
         if sys.version_info < min_version:
             min_version_str = f"{min_version[0]}.{min_version[1]}"
@@ -315,8 +315,9 @@ class SetupIndalekoDevelopmentEnvironment:
                 python_version=python_version,
             )
             os.environ["VIRTUAL_ENV"] = venv_name
+            # Install project dependencies including dev and test extras via uv
             subprocess.run(
-                ["uv", "pip", "install", "--requirement", "pyproject.toml"],
+                ["uv", "pip", "install", ".[dev,test]"],
                 check=True,
             )
             print("Environment setup complete.")
