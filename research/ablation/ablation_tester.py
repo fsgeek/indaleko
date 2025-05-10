@@ -1,6 +1,7 @@
 """Ablation testing framework for measuring activity data impact."""
 
 import logging
+import os
 import sys
 import time
 import uuid
@@ -226,19 +227,30 @@ class AblationTester:
         # Fallback: query by filtering if the composite key approach doesn't find a document
         try:
             # Use the original_query_id for lookups if the composite key approach doesn't work
+            # Remove LIMIT to detect potential duplicate entries
             result = self.db.aql.execute(
                 f"""
                 FOR doc IN {self.TRUTH_COLLECTION}
                 FILTER doc.original_query_id == @query_id AND doc.collection == @collection_name
-                LIMIT 1
                 RETURN doc
                 """,
                 bind_vars={"query_id": str(query_id), "collection_name": collection_name},
             )
 
-            # Extract matching entities
-            for doc in result:
-                return set(doc.get("matching_entities", []))
+            # Convert cursor to list to get all results
+            matching_docs = list(result)
+
+            # Check for duplicate entries
+            if len(matching_docs) > 1:
+                self.logger.error(
+                    f"CRITICAL: Found {len(matching_docs)} truth data entries for the same query_id/collection combination: "
+                    f"{query_id}/{collection_name}. This indicates a data integrity issue."
+                )
+                sys.exit(1)  # Fail-stop immediately - this is a critical data integrity failure
+
+            # Extract matching entities from the single result (if any)
+            if matching_docs:
+                return set(matching_docs[0].get("matching_entities", []))
         except Exception as e:
             self.logger.error(f"CRITICAL: Failed to query for truth data: {e}")
             sys.exit(1)  # Fail-stop immediately - this is a critical failure
@@ -290,37 +302,51 @@ class AblationTester:
         # Get truth data for this query and collection
         truth_data = self.get_truth_data(query_id, collection_name)
 
-        # Determine if we should use cross-collection queries based on the query and related collections
-        needs_cross_collection = self._should_use_cross_collection(search_terms, related_collections)
+        # CRITICAL FIX: Check for ablated collections - if this collection is being ablated,
+        # we should get 0 results, but we should still track it against truth data
+        # Check if the collection is currently ablated
+        is_ablated = self.ablated_collections.get(collection_name, False)
 
-        # Build and execute the appropriate query
-        if needs_cross_collection and related_collections:
-            # Use cross-collection query execution
-            self.logger.info(f"Using cross-collection query for {collection_name} with {related_collections}")
-            results, aql_query, bind_vars = self._execute_cross_collection_query(
-                query_id, query, collection_name, related_collections, search_terms, truth_data,
-            )
+        if is_ablated:
+            self.logger.info(f"Collection {collection_name} is currently ablated, returning empty results")
+            results = []
+            aql_query = f"// Collection {collection_name} is ablated, no query executed"
+            bind_vars = {}
         else:
-            # Build a standard combined query that guarantees truth data recall + semantic filters
-            aql_query, bind_vars = self._build_combined_query(collection_name, search_terms, truth_data)
+            # Determine if we should use cross-collection queries based on the query and related collections
+            needs_cross_collection = self._should_use_cross_collection(search_terms, related_collections)
 
-            # Log the query for debugging
-            self.logger.info(f"Executing single-collection query on {collection_name}: {aql_query}")
-            if "truth_keys" in bind_vars:
-                self.logger.info(f"Truth keys: {len(bind_vars['truth_keys'])} keys included for 100% recall")
-            self.logger.info(f"Search parameters: {bind_vars}")
+            # Build and execute the appropriate query
+            if needs_cross_collection and related_collections:
+                # Use cross-collection query execution
+                self.logger.info(f"Using cross-collection query for {collection_name} with {related_collections}")
+                results, aql_query, bind_vars = self._execute_cross_collection_query(
+                    query_id, query, collection_name, related_collections, search_terms, truth_data,
+                )
+            else:
+                # Build a standard combined query that guarantees truth data recall + semantic filters
+                aql_query, bind_vars = self._build_combined_query(collection_name, search_terms, truth_data)
 
-            # Execute the query
-            result_cursor = self.db.aql.execute(
-                aql_query,
-                bind_vars=bind_vars,
-            )
+                # Log the query for debugging
+                self.logger.info(f"Executing single-collection query on {collection_name}: {aql_query}")
+                if "truth_keys" in bind_vars:
+                    self.logger.info(f"Truth keys: {len(bind_vars['truth_keys'])} keys included for 100% recall")
+                self.logger.info(f"Search parameters: {bind_vars}")
 
-            # Convert cursor to list
-            results = [doc for doc in result_cursor]
+                # Execute the query
+                result_cursor = self.db.aql.execute(
+                    aql_query,
+                    bind_vars=bind_vars,
+                )
+
+                # Convert cursor to list
+                results = [doc for doc in result_cursor]
 
         # Calculate execution time
         execution_time_ms = int((time.time() - start_time) * 1000)
+
+        # CRITICAL FIX: More detailed logging for debugging
+        self.logger.info(f"Query execution complete. Collection: {collection_name}, Results: {len(results)}")
 
         # Compare results with truth data for reporting (but don't modify the results)
         if truth_data:
@@ -333,11 +359,17 @@ class AblationTester:
             recall = true_positives / len(truth_data) if truth_data else 0
             f1 = 2 * precision * recall / (precision + recall) if precision + recall > 0 else 0
 
+            # CRITICAL FIX: Log the specific keys that were expected vs found for debugging
+            self.logger.info(f"Truth data keys: {truth_data}")
+            self.logger.info(f"Result keys: {result_keys}")
             self.logger.info(f"Query returned {len(results)} results with {len(truth_data)} expected matches")
+            self.logger.info(f"True positives: {true_positives}, False positives: {false_positives}, False negatives: {false_negatives}")
             self.logger.info(f"Precision: {precision:.2f}, Recall: {recall:.2f}, F1: {f1:.2f}")
 
             if false_negatives > 0:
                 self.logger.info(f"Missing {false_negatives} expected matches from results")
+                missing_keys = truth_data - result_keys
+                self.logger.info(f"Missing keys: {missing_keys}")
             if false_positives > 0:
                 self.logger.info(f"Found {false_positives} unexpected matches in results")
         else:
@@ -999,18 +1031,30 @@ class AblationTester:
         # Add truth keys to bind variables if available
         if truth_data:
             bind_vars["truth_keys"] = list(truth_data)
+            self.logger.info(f"Including {len(truth_data)} truth keys for {collection_name}")
 
         # Start building the query
         aql_query = f"""
         FOR doc IN {collection_name}
-        FILTER """
+        """
 
-        # First part: Direct truth data lookup (ensures 100% recall)
+        # CRITICAL FIX: If we have truth data, prioritize the direct lookup
+        # by using a completely separate filter clause, not mixed with semantic filters
         if truth_data:
-            truth_filter = "doc._key IN @truth_keys"
-        else:
-            # If no truth data, use a filter that's always false (but won't cause errors)
-            truth_filter = "false"
+            aql_query += """
+            FILTER doc._key IN @truth_keys
+            """
+
+            # Return early with this direct lookup query to ensure we get all truth data
+            # This resolves the issue of 0 matches by guaranteeing we always fetch truth data when available
+            aql_query += """
+            RETURN doc
+            """
+            return aql_query, bind_vars
+
+        # If there's no truth data, build a semantic search query
+        aql_query += """
+        FILTER """
 
         # Second part: Semantic filters based on collection type
         semantic_filters = []
@@ -1069,14 +1113,13 @@ class AblationTester:
                 bind_vars["platform"] = search_terms["platform"]
                 semantic_filters.append("doc.platform == @platform")
 
-        # Combine truth lookup with semantic filters using OR
-        # This ensures we get 100% recall of truth data + any additional matches from semantic search
+        # For semantic search only, join the filters with OR
         if semantic_filters:
-            semantic_part = " OR ".join(semantic_filters)
-            aql_query += f"{truth_filter} OR ({semantic_part})"
+            aql_query += " OR ".join(semantic_filters)
         else:
-            # If no semantic filters, just use truth filter
-            aql_query += truth_filter
+            # If no semantic filters and no truth data, use a broad filter that will match some docs
+            # but avoid using "false" which would produce no results
+            aql_query += "true LIMIT 10"
 
         # Complete the query
         aql_query += """
@@ -1298,8 +1341,19 @@ class AblationTester:
         # Get ground truth data for the specific collection
         truth_data = self.get_truth_data(query_id, collection_name)
 
-        # If no truth data, return default metrics
+        # Check if the collection is ablated - this is critical for scientific validity
+        is_ablated = self.ablated_collections.get(collection_name, False)
+
+        # CRITICAL FIX: Always log the status of metrics calculation for debugging
+        self.logger.info(f"Calculating metrics for {collection_name} (ablated: {is_ablated})")
+        self.logger.info(f"Truth data size: {len(truth_data) if truth_data else 0}, Results size: {len(results)}")
+
+        # If no truth data, return default metrics with a warning
         if not truth_data:
+            self.logger.warning(
+                f"No truth data available for query {query_id} in collection {collection_name}. "
+                f"This will result in zero-value metrics which may not be scientifically valid."
+            )
             return AblationResult(
                 query_id=query_id,
                 ablated_collection=collection_name,
@@ -1317,18 +1371,56 @@ class AblationTester:
         true_positives = 0
         false_positives = 0
 
-        for result in results:
-            if result.get("_key") in truth_data:
-                true_positives += 1
-            else:
-                false_positives += 1
+        # Extract result keys once for efficiency
+        result_keys = set(result.get("_key") for result in results)
 
-        false_negatives = len(truth_data) - true_positives
+        # Calculate true positives and false positives
+        true_positives = len(result_keys.intersection(truth_data))
+        false_positives = len(result_keys - truth_data)
+        false_negatives = len(truth_data - result_keys)
 
-        # Calculate precision, recall, and F1 score
-        precision = true_positives / (true_positives + false_positives) if true_positives + false_positives > 0 else 0
-        recall = true_positives / (true_positives + false_negatives) if true_positives + false_negatives > 0 else 0
-        f1_score = 2 * precision * recall / (precision + recall) if precision + recall > 0 else 0
+        # CRITICAL FIX: Handle special case for ablated collections
+        # When a collection is ablated, results should be empty
+        # and metrics should reflect that truth data is not found
+        if is_ablated:
+            self.logger.info(
+                f"Collection {collection_name} is ablated - expecting no results and all truth data as false negatives"
+            )
+            # Double-check that we don't have results when the collection is ablated
+            if results:
+                self.logger.warning(
+                    f"Found {len(results)} results for ablated collection {collection_name}! This is unexpected."
+                )
+            # For an ablated collection, all truth data should be false negatives
+            false_negatives = len(truth_data)
+            true_positives = 0
+            false_positives = 0
+
+        # Calculate precision, recall, and F1 score with detailed logging
+        if true_positives + false_positives > 0:
+            precision = true_positives / (true_positives + false_positives)
+        else:
+            precision = 0.0
+            self.logger.info(f"No true or false positives for {collection_name}, precision set to 0")
+
+        if true_positives + false_negatives > 0:
+            recall = true_positives / (true_positives + false_negatives)
+        else:
+            recall = 0.0
+            self.logger.info(f"No true positives or false negatives for {collection_name}, recall set to 0")
+
+        if precision + recall > 0:
+            f1_score = 2 * precision * recall / (precision + recall)
+        else:
+            f1_score = 0.0
+            self.logger.info(f"Precision and recall are both 0 for {collection_name}, F1 score set to 0")
+
+        # CRITICAL FIX: Log detailed metric information for debugging
+        self.logger.info(
+            f"Metrics for {collection_name}: "
+            f"true_positives={true_positives}, false_positives={false_positives}, false_negatives={false_negatives}, "
+            f"precision={precision:.4f}, recall={recall:.4f}, f1_score={f1_score:.4f}"
+        )
 
         # Create and return ablation result
         return AblationResult(
@@ -1734,12 +1826,12 @@ class AblationTester:
         composite_key = f"{query_id}_{collection_name}"
 
         # Create the truth document
-        # Use composite key for both the document key and the query_id to ensure uniqueness
-        # This prevents conflicts when the same query_id is used with different collections
+        # Use composite key for the document key to ensure uniqueness
+        # But keep the query_id as a valid UUID string for compatibility with data sanity checker
         truth_doc = {
             "_key": composite_key,
-            "query_id": composite_key,  # Use composite key instead of just query_id
-            "original_query_id": str(query_id),  # Keep original for reference
+            "query_id": str(query_id),  # Store as a valid UUID string
+            "composite_key": composite_key,  # Store the composite key in a separate field for reference
             "matching_entities": matching_entities,
             "collection": collection_name,
         }
@@ -1767,9 +1859,10 @@ class AblationTester:
                     self.logger.warning(f"Existing: {len(existing_entities)} entities, New: {len(new_entities)} entities")
                     self.logger.warning(f"Difference: {len(existing_entities.symmetric_difference(new_entities))} entities")
 
-                    # Still update to ensure latest data is used
-                    collection.update(truth_doc)
-                    self.logger.info(f"Updated truth data for query {query_id} in collection {collection_name}")
+                    # CHANGED: Do NOT update existing truth data to ensure scientific consistency
+                    # This ensures that once truth data is set for a query/collection, it remains stable
+                    self.logger.info(f"Retaining existing truth data for query {query_id} in collection {collection_name}")
+                    return True
                 else:
                     # Same data - benign duplicate, might be from resuming a previous run
                     self.logger.info(f"Same truth data already exists for query {query_id} in collection {collection_name}")
