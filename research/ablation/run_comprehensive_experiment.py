@@ -138,7 +138,7 @@ def main():
         "AblationMediaActivity",
     ]
 
-    # Initialize experiment runner
+    # Initialize experiment runner with all parameters
     experiment_runner = ExperimentRunner(
         collections=collections,
         output_dir=output_dir,
@@ -146,6 +146,9 @@ def main():
         control_percentage=args.control_pct,
         combination_limit=args.max_combos,
         seed=args.seed,
+        record_count=args.count,
+        query_count=args.queries,
+        clear_existing=args.clear,
     )
 
     # Run the experiment
