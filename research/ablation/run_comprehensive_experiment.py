@@ -65,11 +65,26 @@ def clear_existing_data():
             db.aql.execute(f"FOR doc IN {collection_name} REMOVE doc IN {collection_name}")
             logging.info(f"Cleared collection {collection_name}")
 
-    # Always clear the truth collection to avoid duplicate key errors between runs
+    # CRITICAL FIX: Always clear the truth collection to ensure a fresh start for each experiment
+    # Truth data must be regenerated for each experiment to avoid conflicts
     truth_collection = "AblationQueryTruth"
     if db.has_collection(truth_collection):
+        # Count documents before clearing to report how many were removed
+        cursor = db.aql.execute(f"RETURN LENGTH({truth_collection})")
+        count = next(cursor)
+
+        # Clear the collection
         db.aql.execute(f"FOR doc IN {truth_collection} REMOVE doc IN {truth_collection}")
-        logging.info(f"Cleared collection {truth_collection}")
+
+        logging.info(f"Cleared {count} documents from truth collection {truth_collection}")
+    else:
+        logging.info(f"Truth collection {truth_collection} does not exist yet")
+
+    # Also clear any results collection that might exist
+    results_collection = "AblationResults"
+    if db.has_collection(results_collection):
+        db.aql.execute(f"FOR doc IN {results_collection} REMOVE doc IN {results_collection}")
+        logging.info(f"Cleared collection {results_collection}")
 
     logging.info("Data cleared successfully")
 

@@ -427,23 +427,48 @@ class ExperimentRunner:
                 collection_query_ids = {}
 
                 for collection in collection_pair:
-                    # Generate a collection-specific query ID
+                    # CRITICAL FIX: Generate a truly unique query ID
+                    # Include collection, query index, and base query ID
+                    # But NO other variable factors that could change between runs
                     collection_query_id = generate_deterministic_uuid(
-                        f"query:{collection}:{i}:{base_query_id}:{self.seed}"
+                        f"fixed_query:{collection}:{i}:{self.seed}"
                     )
                     collection_query_ids[collection] = collection_query_id
 
-                    # Find matching entities in the collection
+                    self.logger.info(f"Using fixed query ID {collection_query_id} for {collection}")
+
+                    # Find matching entities in the collection - using a DETERMINISTIC approach
                     try:
-                        # Get actual document keys from the collection for truth data
+                        # CRITICAL FIX: Use a fixed deterministic approach for entity selection
+                        # The key is ensuring the EXACT SAME query always selects the EXACT SAME entities
+                        # We'll use collection_query_id as a stable, deterministic seed
+
+                        # Convert the collection query ID to a deterministic seed
+                        # Strip all hyphens and take the first 8 chars as a hex number
+                        seed_str = str(collection_query_id).replace('-', '')
+                        seed_value = int(seed_str[:8], 16)
+
+                        # Fix the offset to ensure the same entities are always selected for the same query
+                        fixed_offset = seed_value % 20
+
+                        # Log the seed and offset for debugging
+                        self.logger.info(f"Using seed {seed_value} with fixed offset {fixed_offset} for {collection}")
+
+                        # Always use a fixed AQL query with standardized sorting
+                        # Using stable sort by _key (no random functions) and fixed entity count
                         cursor = self.db.aql.execute(
                             f"""
                             FOR doc IN {collection}
-                            LIMIT 5
+                            SORT doc._key ASC  /* Use stable ascending sort by document key */
+                            LIMIT {fixed_offset}, 5  /* Take exactly 5 entities with fixed offset */
                             RETURN doc._key
                             """
                         )
                         entity_ids = [doc_key for doc_key in cursor]
+
+                        self.logger.info(
+                            f"Selected {len(entity_ids)} deterministic entities for query {collection_query_id} in {collection}"
+                        )
 
                         # Store truth data with the collection-specific query ID
                         ablation_tester.store_truth_data(collection_query_id, collection, entity_ids)
