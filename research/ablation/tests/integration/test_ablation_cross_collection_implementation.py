@@ -62,11 +62,19 @@ class TestAblationCrossCollectionImplementation(unittest.TestCase):
         # Create a shared entity registry
         cls.entity_registry = SharedEntityRegistry()
 
-        # Create relationship patterns
-        cls.music_location_pattern = MusicLocationPattern(entity_registry=cls.entity_registry)
-        cls.music_task_pattern = MusicTaskPattern(entity_registry=cls.entity_registry)
-        cls.task_collaboration_pattern = TaskCollaborationPattern(entity_registry=cls.entity_registry)
-        cls.location_collaboration_pattern = LocationCollaborationPattern(entity_registry=cls.entity_registry)
+        # Import the fixed relationship patterns that use proper Pydantic models
+        from research.ablation.tests.integration.fixed_relationship_patterns import (
+            FixedMusicLocationPattern,
+            FixedMusicTaskPattern,
+            FixedTaskCollaborationPattern,
+            FixedLocationCollaborationPattern,
+        )
+
+        # Create fixed relationship patterns that use proper Pydantic models
+        cls.music_location_pattern = FixedMusicLocationPattern(entity_registry=cls.entity_registry)
+        cls.music_task_pattern = FixedMusicTaskPattern(entity_registry=cls.entity_registry)
+        cls.task_collaboration_pattern = FixedTaskCollaborationPattern(entity_registry=cls.entity_registry)
+        cls.location_collaboration_pattern = FixedLocationCollaborationPattern(entity_registry=cls.entity_registry)
 
         # Initialize the ablation tester
         cls.tester = AblationTester()
