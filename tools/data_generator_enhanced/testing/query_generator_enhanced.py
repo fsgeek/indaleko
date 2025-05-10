@@ -30,16 +30,15 @@ if os.environ.get("INDALEKO_ROOT") is None:
 # Import Indaleko modules
 from tools.data_generator_enhanced.testing.cluster_generator import ActivitySource
 
-# Only import if actually using the LLM connector
+# Import LLM client
 def import_llm_connector():
-    """Dynamically import LLM connector to avoid circular imports."""
-    try:
-        from query.utils.llm_connector.openai_connector import OpenAIConnector
-        from query.utils.llm_connector.anthropic_connector import AnthropicConnector
-        return {"openai": OpenAIConnector, "anthropic": AnthropicConnector}
-    except ImportError as e:
-        logging.error(f"Error importing LLM connector: {e}")
-        return None
+    """Import LLM client following strict fail-stop principles."""
+    # Import the working client directly
+    from research.ablation.query.enhanced.llm_client import SimpleLLMClient
+
+    # Return a dictionary for backwards compatibility with the rest of the code
+    # This ensures we use the properly working client instead of broken connectors
+    return {"anthropic": SimpleLLMClient, "openai": SimpleLLMClient}
 
 
 @dataclass
@@ -403,70 +402,112 @@ class QueryGenerator:
         num_queries: int = 10
     ) -> Dict[str, List[Dict[str, Any]]]:
         """Generate queries specifically for testing a cluster.
-        
+
         This method creates a balanced set of queries that target both
         experimental and control sources in the cluster.
-        
+
         Args:
             cluster: Cluster dictionary from ClusterGenerator
             num_queries: Number of queries to generate (default: 10)
-        
+
         Returns:
             Dictionary with 'experimental' and 'control' query lists
+
+        Following fail-stop principles - exits on failure rather than returning empty results.
         """
-        # Extract categories from cluster
-        experimental_categories = set(cluster.get("experimental_categories", []))
-        control_categories = set(cluster.get("control_categories", []))
-        
+        # Validate cluster format
+        if not isinstance(cluster, dict):
+            self.logger.error("CRITICAL: Invalid cluster format - must be a dictionary")
+            sys.exit(1)  # Fail-stop immediately
+
+        # Extract categories from cluster with validation
+        if "experimental_categories" not in cluster:
+            self.logger.error("CRITICAL: Cluster missing 'experimental_categories' key")
+            sys.exit(1)  # Fail-stop immediately
+
+        if "control_categories" not in cluster:
+            self.logger.error("CRITICAL: Cluster missing 'control_categories' key")
+            sys.exit(1)  # Fail-stop immediately
+
+        experimental_categories = set(cluster["experimental_categories"])
+        control_categories = set(cluster["control_categories"])
+
+        if not experimental_categories:
+            self.logger.error("CRITICAL: Empty experimental categories list")
+            sys.exit(1)  # Fail-stop immediately
+
+        if not control_categories:
+            self.logger.error("CRITICAL: Empty control categories list")
+            sys.exit(1)  # Fail-stop immediately
+
         # Find templates that match these categories
         experimental_templates = []
         for template in self.all_templates:
             if any(cat in experimental_categories for cat in template.categories):
                 experimental_templates.append(template)
-        
+
+        if not experimental_templates:
+            self.logger.error(f"CRITICAL: No templates found for experimental categories: {experimental_categories}")
+            sys.exit(1)  # Fail-stop immediately
+
         control_templates = []
         for template in self.all_templates:
             if any(cat in control_categories for cat in template.categories):
                 control_templates.append(template)
-        
+
+        if not control_templates:
+            self.logger.error(f"CRITICAL: No templates found for control categories: {control_categories}")
+            sys.exit(1)  # Fail-stop immediately
+
         # Generate queries
         queries = {
             "experimental": [],
             "control": []
         }
-        
+
         # Split queries evenly between experimental and control
         exp_count = num_queries // 2
         control_count = num_queries - exp_count
-        
+
+        # Generate experimental queries
         for _ in range(exp_count):
-            if experimental_templates:
-                template = random.choice(experimental_templates)
-                query_text = template.fill()
-                
-                queries["experimental"].append({
-                    "text": query_text,
-                    "template": template.template,
-                    "categories": template.categories,
-                    "description": template.description,
-                    "timestamp": datetime.datetime.now().isoformat()
-                })
-        
+            template = random.choice(experimental_templates)
+            query_text = template.fill()
+
+            queries["experimental"].append({
+                "text": query_text,
+                "template": template.template,
+                "categories": template.categories,
+                "description": template.description,
+                "timestamp": datetime.datetime.now().isoformat()
+            })
+
+        # Generate control queries
         for _ in range(control_count):
-            if control_templates:
-                template = random.choice(control_templates)
-                query_text = template.fill()
-                
-                queries["control"].append({
-                    "text": query_text,
-                    "template": template.template,
-                    "categories": template.categories,
-                    "description": template.description,
-                    "timestamp": datetime.datetime.now().isoformat()
-                })
-        
+            template = random.choice(control_templates)
+            query_text = template.fill()
+
+            queries["control"].append({
+                "text": query_text,
+                "template": template.template,
+                "categories": template.categories,
+                "description": template.description,
+                "timestamp": datetime.datetime.now().isoformat()
+            })
+
+        # Verify we generated the expected number of queries
+        if len(queries["experimental"]) != exp_count:
+            self.logger.error(f"CRITICAL: Failed to generate {exp_count} experimental queries")
+            sys.exit(1)  # Fail-stop immediately
+
+        if len(queries["control"]) != control_count:
+            self.logger.error(f"CRITICAL: Failed to generate {control_count} control queries")
+            sys.exit(1)  # Fail-stop immediately
+
         self.logger.info(f"Generated {len(queries['experimental'])} experimental queries and "
                          f"{len(queries['control'])} control queries for cluster")
+
+        return queries
         
         return queries
     
@@ -486,19 +527,16 @@ class QueryGenerator:
         Returns:
             Dictionary with 'experimental' and 'control' query lists
         """
-        # Import LLM connector
+        # Import LLM connector - follows fail-stop principles
         connectors = import_llm_connector()
         if not connectors or llm_provider not in connectors:
-            self.logger.error(f"LLM provider '{llm_provider}' not available")
-            return {"experimental": [], "control": []}
-        
+            self.logger.error(f"CRITICAL: LLM provider '{llm_provider}' not available")
+            self.logger.error("This is required for proper ablation testing")
+            sys.exit(1)  # Fail-stop immediately
+
         # Initialize LLM connector
-        try:
-            connector_class = connectors[llm_provider]
-            connector = connector_class()
-        except Exception as e:
-            self.logger.error(f"Error initializing LLM connector: {e}")
-            return {"experimental": [], "control": []}
+        connector_class = connectors[llm_provider]
+        connector = connector_class()
         
         # Extract categories from cluster
         experimental_categories = sorted(list(set(cluster.get("experimental_categories", []))))
@@ -554,97 +592,124 @@ class QueryGenerator:
         ]
         """
         
+        # Get experimental queries directly following fail-stop principles
+        experimental_response = connector.get_completion(experimental_prompt)
+        if not experimental_response:
+            self.logger.error("CRITICAL: Failed to get experimental query response from LLM")
+            sys.exit(1)  # Fail-stop immediately
+
+        # Get control queries
+        control_response = connector.get_completion(control_prompt)
+        if not control_response:
+            self.logger.error("CRITICAL: Failed to get control query response from LLM")
+            sys.exit(1)  # Fail-stop immediately
+
+        # Parse responses - following fail-stop principles
+        import re
+
+        def extract_json(text):
+            """Extract JSON array from response text."""
+            json_pattern = r'(\[.*\])'
+            match = re.search(json_pattern, text, re.DOTALL)
+            if match:
+                return match.group(1)
+            return None
+
+        experimental_json = extract_json(experimental_response)
+        if not experimental_json:
+            self.logger.error("CRITICAL: Failed to extract experimental JSON from LLM response")
+            self.logger.error(f"Response received: {experimental_response}")
+            sys.exit(1)  # Fail-stop immediately
+
+        control_json = extract_json(control_response)
+        if not control_json:
+            self.logger.error("CRITICAL: Failed to extract control JSON from LLM response")
+            self.logger.error(f"Response received: {control_response}")
+            sys.exit(1)  # Fail-stop immediately
+
+        # Parse JSON data
         try:
-            # Get experimental queries
-            experimental_response = connector.get_completion(experimental_prompt)
-            
-            # Get control queries
-            control_response = connector.get_completion(control_prompt)
-            
-            # Parse responses
-            try:
-                # Extract JSON from responses
-                import re
-                
-                def extract_json(text):
-                    json_pattern = r'(\[.*\])'
-                    match = re.search(json_pattern, text, re.DOTALL)
-                    if match:
-                        return match.group(1)
-                    return None
-                
-                experimental_json = extract_json(experimental_response)
-                control_json = extract_json(control_response)
-                
-                if experimental_json and control_json:
-                    experimental_queries = json.loads(experimental_json)
-                    control_queries = json.loads(control_json)
-                    
-                    # Add timestamp to each query
-                    now = datetime.datetime.now().isoformat()
-                    for query in experimental_queries:
-                        query["timestamp"] = now
-                    for query in control_queries:
-                        query["timestamp"] = now
-                    
-                    return {
-                        "experimental": experimental_queries,
-                        "control": control_queries
-                    }
-                else:
-                    self.logger.error("Failed to extract JSON from LLM responses")
-                    return {"experimental": [], "control": []}
-            
-            except json.JSONDecodeError as e:
-                self.logger.error(f"Error parsing LLM responses: {e}")
-                self.logger.error(f"Experimental response: {experimental_response}")
-                self.logger.error(f"Control response: {control_response}")
-                return {"experimental": [], "control": []}
-            
-        except Exception as e:
-            self.logger.error(f"Error generating queries with LLM: {e}")
-            return {"experimental": [], "control": []}
+            experimental_queries = json.loads(experimental_json)
+        except json.JSONDecodeError as e:
+            self.logger.error(f"CRITICAL: Failed to parse experimental JSON: {e}")
+            self.logger.error(f"JSON data: {experimental_json}")
+            sys.exit(1)  # Fail-stop immediately
+
+        try:
+            control_queries = json.loads(control_json)
+        except json.JSONDecodeError as e:
+            self.logger.error(f"CRITICAL: Failed to parse control JSON: {e}")
+            self.logger.error(f"JSON data: {control_json}")
+            sys.exit(1)  # Fail-stop immediately
+
+        # Add timestamp to each query
+        now = datetime.datetime.now().isoformat()
+        for query in experimental_queries:
+            query["timestamp"] = now
+        for query in control_queries:
+            query["timestamp"] = now
+
+        return {
+            "experimental": experimental_queries,
+            "control": control_queries
+        }
     
-    def save_queries_to_file(self, queries: Dict[str, List[Dict[str, Any]]], file_path: str) -> bool:
+    def save_queries_to_file(self, queries: Dict[str, List[Dict[str, Any]]], file_path: str) -> None:
         """Save generated queries to a JSON file.
-        
+
         Args:
             queries: Dictionary with query lists
             file_path: Path to save the JSON file
-        
-        Returns:
-            True if successful, False otherwise
+
+        Follows fail-stop principles - exits on failure instead of returning boolean.
         """
         try:
             with open(file_path, 'w') as f:
                 json.dump(queries, f, indent=2)
-            
-            total_queries = len(queries.get("experimental", [])) + len(queries.get("control", []))
-            self.logger.info(f"Saved {total_queries} queries to {file_path}")
-            return True
         except Exception as e:
-            self.logger.error(f"Error saving queries to file: {e}")
-            return False
+            self.logger.error(f"CRITICAL: Error saving queries to file {file_path}: {e}")
+            sys.exit(1)  # Fail-stop immediately
+
+        total_queries = len(queries.get("experimental", [])) + len(queries.get("control", []))
+        self.logger.info(f"Saved {total_queries} queries to {file_path}")
     
     def load_queries_from_file(self, file_path: str) -> Dict[str, List[Dict[str, Any]]]:
         """Load queries from a JSON file.
-        
+
         Args:
             file_path: Path to the JSON file
-        
+
         Returns:
             Dictionary with query lists
+
+        Follows fail-stop principles - exits on failure rather than returning empty results.
         """
         try:
             with open(file_path, 'r') as f:
                 queries = json.load(f)
-            
-            total_queries = len(queries.get("experimental", [])) + len(queries.get("control", []))
-            self.logger.info(f"Loaded {total_queries} queries from {file_path}")
-            return queries
+        except FileNotFoundError:
+            self.logger.error(f"CRITICAL: Query file not found: {file_path}")
+            sys.exit(1)  # Fail-stop immediately
+        except json.JSONDecodeError as e:
+            self.logger.error(f"CRITICAL: Invalid JSON in query file {file_path}: {e}")
+            sys.exit(1)  # Fail-stop immediately
         except Exception as e:
-            self.logger.error(f"Error loading queries from file: {e}")
-            return {"experimental": [], "control": []}
+            self.logger.error(f"CRITICAL: Error loading queries from file {file_path}: {e}")
+            sys.exit(1)  # Fail-stop immediately
+
+        # Validate query structure
+        if "experimental" not in queries or "control" not in queries:
+            self.logger.error(f"CRITICAL: Invalid query file format in {file_path}")
+            self.logger.error("Query file must contain 'experimental' and 'control' keys")
+            sys.exit(1)  # Fail-stop immediately
+
+        total_queries = len(queries.get("experimental", [])) + len(queries.get("control", []))
+        if total_queries == 0:
+            self.logger.error(f"CRITICAL: No queries found in {file_path}")
+            sys.exit(1)  # Fail-stop immediately
+
+        self.logger.info(f"Loaded {total_queries} queries from {file_path}")
+        return queries
     
     def get_available_categories(self) -> List[str]:
         """Get a list of all available query categories.
@@ -656,50 +721,74 @@ class QueryGenerator:
 
 
 def main():
-    """Test the QueryGenerator."""
+    """Test the QueryGenerator following fail-stop principles."""
     logging.basicConfig(level=logging.INFO, format="%(name)s - %(levelname)s - %(message)s")
-    
+
     # Create a generator with a fixed seed for reproducibility
     generator = QueryGenerator(seed=42)
-    
+
     print("\nAvailable Query Categories:")
-    for category in generator.get_available_categories():
+    categories = generator.get_available_categories()
+    if not categories:
+        print("CRITICAL: No query categories available")
+        sys.exit(1)  # Fail-stop immediately
+
+    for category in categories:
         print(f"- {category}")
-    
+
     # Generate some random queries
     print("\nRandom Queries:")
-    for _ in range(5):
+    for i in range(5):
         query = generator.generate_query()
+        # Validate query structure
+        if 'text' not in query or 'categories' not in query:
+            print(f"CRITICAL: Generated query {i+1} missing required fields")
+            sys.exit(1)  # Fail-stop immediately
+
         print(f"- {query['text']}")
         print(f"  Categories: {', '.join(query['categories'])}")
-    
+
     # Generate category-specific queries
     print("\nCategory-Specific Queries:")
-    for category in generator.get_available_categories():
+    for category in categories:
         query = generator.generate_query(category)
+        # Validate category-specific query
+        if 'text' not in query or 'categories' not in query:
+            print(f"CRITICAL: Generated category-specific query for '{category}' missing required fields")
+            sys.exit(1)  # Fail-stop immediately
+
         print(f"- [{category}] {query['text']}")
         print(f"  Categories: {', '.join(query['categories'])}")
-    
+
     # Test with a mock cluster
     mock_cluster = {
         "experimental_categories": ["activity", "temporal", "calendar"],
         "control_categories": ["spatial", "environmental"]
     }
-    
+
     print("\nCluster-Specific Queries:")
     cluster_queries = generator.generate_queries_for_cluster(mock_cluster, num_queries=6)
-    
+
+    # Validate queries to ensure they exist (fail-stop approach)
+    if not cluster_queries.get("experimental"):
+        print("CRITICAL: Failed to generate experimental queries")
+        sys.exit(1)  # Fail-stop immediately
+
+    if not cluster_queries.get("control"):
+        print("CRITICAL: Failed to generate control queries")
+        sys.exit(1)  # Fail-stop immediately
+
     print("Experimental Queries:")
     for query in cluster_queries["experimental"]:
         print(f"- {query['text']}")
         print(f"  Categories: {', '.join(query['categories'])}")
-    
+
     print("\nControl Queries:")
     for query in cluster_queries["control"]:
         print(f"- {query['text']}")
         print(f"  Categories: {', '.join(query['categories'])}")
-    
-    # Save queries to file
+
+    # Save queries to file - will fail-stop if there's an error
     generator.save_queries_to_file(cluster_queries, "test_queries.json")
     print("\nQueries saved to test_queries.json")
 
