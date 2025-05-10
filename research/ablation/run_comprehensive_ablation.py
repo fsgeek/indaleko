@@ -890,7 +890,6 @@ def clear_existing_data():
         "AblationCollaborationActivity",
         "AblationStorageActivity",
         "AblationMediaActivity",
-        "AblationTruthData",
     ]
 
     # Following fail-stop model - let exceptions propagate
@@ -901,6 +900,12 @@ def clear_existing_data():
         if db.has_collection(collection_name):
             db.aql.execute(f"FOR doc IN {collection_name} REMOVE doc IN {collection_name}")
             logging.info(f"Cleared collection {collection_name}")
+
+    # Always clear the truth collection to avoid duplicate key errors between runs
+    truth_collection = "AblationQueryTruth"
+    if db.has_collection(truth_collection):
+        db.aql.execute(f"FOR doc IN {truth_collection} REMOVE doc IN {truth_collection}")
+        logging.info(f"Cleared collection {truth_collection}")
 
     logging.info("Data cleared successfully")
 

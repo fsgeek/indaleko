@@ -1709,14 +1709,55 @@ class AblationTester:
         try:
             existing = collection.get(composite_key)
             if existing:
-                # Update existing document
-                collection.update(truth_doc)
-                self.logger.info(f"Updated truth data for query {query_id} in collection {collection_name}")
+                # Compare existing document with new data to check for logic bugs
+                existing_entities = set(existing.get("matching_entities", []))
+                new_entities = set(matching_entities)
+
+                if existing_entities != new_entities:
+                    # Different matching entities for same query_id/collection - potential logic bug
+                    self.logger.warning(
+                        f"Found different truth data for same query/collection: {query_id}/{collection_name}"
+                    )
+                    self.logger.warning(f"Existing: {len(existing_entities)} entities, New: {len(new_entities)} entities")
+                    self.logger.warning(f"Difference: {len(existing_entities.symmetric_difference(new_entities))} entities")
+
+                    # Still update to ensure latest data is used
+                    collection.update(truth_doc)
+                    self.logger.info(f"Updated truth data for query {query_id} in collection {collection_name}")
+                else:
+                    # Same data - benign duplicate, might be from resuming a previous run
+                    self.logger.info(f"Same truth data already exists for query {query_id} in collection {collection_name}")
             else:
                 # Insert new document
                 collection.insert(truth_doc)
                 self.logger.info(f"Recorded truth data for query {query_id} in collection {collection_name}")
         except Exception as e:
+            # Handle constraint violations specifically to provide better error messages
+            if "unique constraint violated" in str(e) and "conflicting key" in str(e):
+                # This is likely a race condition or two parallel runs of the same test
+                # Try to fetch the record again to compare
+                try:
+                    conflict_doc = collection.get(composite_key)
+                    if conflict_doc:
+                        existing_entities = set(conflict_doc.get("matching_entities", []))
+                        new_entities = set(matching_entities)
+
+                        if existing_entities == new_entities:
+                            self.logger.warning(
+                                f"Duplicate truth data detected for {query_id}/{collection_name} - same content"
+                            )
+                            return True  # This is not a critical error if the data is identical
+                        else:
+                            self.logger.error(
+                                f"CRITICAL: Conflicting truth data for query {query_id} in collection {collection_name}"
+                            )
+                            self.logger.error(f"Existing document has {len(existing_entities)} entities")
+                            self.logger.error(f"New document has {len(new_entities)} entities")
+                            self.logger.error("This suggests a logic bug in query generation")
+                            sys.exit(1)  # Fail-stop immediately - this is a critical logic error
+                except Exception as fetch_error:
+                    self.logger.error(f"Failed to fetch conflicting document: {fetch_error}")
+
             self.logger.error(f"CRITICAL: Failed to store truth data: {e}")
             sys.exit(1)  # Fail-stop immediately
 
