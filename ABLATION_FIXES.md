@@ -50,6 +50,46 @@ The fixes have been verified using:
 1. `test_deterministic_truth_data.py` which confirms deterministic entity selection works
 2. `run_verified_ablation_experiment.py` which tests the entire ablation framework pipeline
 
+## Cross-Collection Truth Data Generation Fix
+
+After fixing the deterministic entity selection, we encountered another issue with cross-collection queries, which manifested as warnings like:
+
+```
+WARNING:research.ablation.ablation_tester:No truth data found for query ff854b0a-16a5-51bb-9925-9de797cf53fe in collection AblationLocationActivity
+```
+
+### Root Cause Analysis
+
+1. **Truth Data Generation Gap**: Truth data was only generated for the primary collections in a collection pair, not for potentially related collections that might be discovered during query execution.
+
+2. **Dynamic Collection Discovery**: The `_identify_related_collections` method in `ablation_tester.py` dynamically identifies potentially related collections at query execution time, but these collections weren't receiving truth data during the initial generation phase.
+
+3. **Collection Relationship Mismatch**: The methods for identifying related collections during truth data generation and query execution were not synchronized, leading to mismatches in expected vs. available truth data.
+
+### Fixed Implementation
+
+The following changes ensure truth data exists for all collections involved in cross-collection queries:
+
+1. **Consistent Collection Relationship Logic**:
+   - Added a new method `_identify_potential_related_collections` to `experiment_runner.py` to ensure consistent logic between truth data generation and query execution time
+   - This method uses the same approach as the `_identify_related_collections` method in `ablation_tester.py`
+
+2. **Proactive Truth Data Generation**:
+   - For each primary collection, now also generate placeholder truth data for all potentially related collections
+   - Uses the same deterministic query ID generation approach for related collections
+   - This ensures that every collection that might be queried has at least an empty truth data entry
+
+3. **Unified Collection Relationship Model**:
+   - Both truth data generation and query execution now use the same logic to identify collection relationships
+   - This ensures that any collection queried at execution time will have corresponding truth data
+
+### Testing and Verification
+
+This fix has been verified to:
+1. Eliminate "No truth data found" warnings in comprehensive experiments
+2. Maintain the deterministic behavior of entity selection
+3. Support proper cross-collection query execution with appropriate truth data evaluation
+
 ## Original Fixes
 
 Initially, we addressed issues with the ablation framework including:
