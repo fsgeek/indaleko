@@ -20,7 +20,51 @@ from research.ablation.models.relationship_patterns import (
 )
 
 
-class FixedMusicLocationPattern(RelationshipPatternGenerator):
+class FixedRelationshipPatternBase(RelationshipPatternGenerator):
+    """Base class for fixed relationship pattern generators.
+
+    Adds support for proper UUID handling when preparing documents for ArangoDB.
+    """
+
+    def prepare_for_arango(self, document: Dict[str, Any]) -> Dict[str, Any]:
+        """Prepare a document for insertion into ArangoDB with proper UUID handling.
+
+        Ensures the document has a valid _key field and references
+        are properly formatted for ArangoDB.
+
+        Args:
+            document: The document to prepare
+
+        Returns:
+            Dict: The prepared document
+        """
+        # Make a copy to avoid modifying the original
+        doc = document.copy()
+
+        # Make sure the document has a _key field (derived from id if available)
+        if "id" in doc and "_key" not in doc:
+            # Handle UUID objects properly by using .hex to get a string without dashes
+            if isinstance(doc["id"], uuid.UUID):
+                doc["_key"] = doc["id"].hex  # Use .hex instead of str().replace("-", "")
+            else:
+                doc["_key"] = str(doc["id"]).replace("-", "")  # Remove dashes for valid ArangoDB keys
+
+        # Ensure references use proper _id format if needed
+        if "references" in doc:
+            refs = doc["references"]
+            for field, values in refs.items():
+                # Skip empty references
+                if not values:
+                    continue
+
+                # Ensure values is a list
+                if not isinstance(values, list):
+                    refs[field] = [values]
+
+        return doc
+
+
+class FixedMusicLocationPattern(FixedRelationshipPatternBase):
     """Generator for Music+Location relationship patterns using Pydantic models."""
 
     def generate_music_at_location(self) -> Tuple[Dict[str, Any], Dict[str, Any]]:
@@ -147,7 +191,7 @@ class FixedMusicLocationPattern(RelationshipPatternGenerator):
         }
 
 
-class FixedMusicTaskPattern(RelationshipPatternGenerator):
+class FixedMusicTaskPattern(FixedRelationshipPatternBase):
     """Generator for Music+Task relationship patterns using Pydantic models."""
 
     def generate_music_during_task(self) -> Tuple[Dict[str, Any], Dict[str, Any]]:
@@ -280,7 +324,7 @@ class FixedMusicTaskPattern(RelationshipPatternGenerator):
         }
 
 
-class FixedTaskCollaborationPattern(RelationshipPatternGenerator):
+class FixedTaskCollaborationPattern(FixedRelationshipPatternBase):
     """Generator for Task+Collaboration relationship patterns using Pydantic models."""
 
     def generate_meeting_with_tasks(self) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
@@ -395,7 +439,7 @@ class FixedTaskCollaborationPattern(RelationshipPatternGenerator):
         return random.sample(participants_list, count)
 
 
-class FixedLocationCollaborationPattern(RelationshipPatternGenerator):
+class FixedLocationCollaborationPattern(FixedRelationshipPatternBase):
     """Generator for Location+Collaboration relationship patterns using Pydantic models."""
 
     def generate_meeting_at_location(self) -> Tuple[Dict[str, Any], Dict[str, Any]]:
