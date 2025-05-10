@@ -127,6 +127,100 @@ def generate_basic_music(location_id=None):
     return json.loads(music.model_dump_json())
 
 
+def verify_cross_collection_query(db, entities):
+    """Verify the cross-collection query directly using MCP ArangoDB query tool."""
+    logger = logging.getLogger(__name__)
+    logger.info("Verifying cross-collection query with direct AQL via MCP")
+    
+    # Get the music and location IDs
+    music_key = entities["music"]["_key"]
+    location_key = entities["location"]["_key"]
+    music_id = f"AblationMusicActivity/{music_key}"
+    location_id = f"AblationLocationActivity/{location_key}"
+    artist = entities["music"]["artist"]
+    location_name = entities["location"]["location_name"]
+    
+    # Log what we're looking for
+    logger.info(f"Looking for music with artist '{artist}' and location '{location_name}'")
+    logger.info(f"Music ID: {music_id}")
+    logger.info(f"Location ID: {location_id}")
+    
+    # Check references in music document
+    music_query = """
+    FOR doc IN AblationMusicActivity
+    FILTER doc._key == @music_key
+    RETURN { 
+        _id: doc._id, 
+        _key: doc._key,
+        artist: doc.artist,
+        track: doc.track,
+        references: doc.references 
+    }
+    """
+    music_result = mcp__arango_mcp__arango_query(query=music_query, bindVars={"music_key": music_key})
+    logger.info(f"Music document: {json.dumps(music_result, indent=2)}")
+    
+    # Check references in location document
+    location_query = """
+    FOR doc IN AblationLocationActivity
+    FILTER doc._key == @location_key
+    RETURN { 
+        _id: doc._id, 
+        _key: doc._key,
+        location_name: doc.location_name,
+        location_type: doc.location_type,
+        references: doc.references 
+    }
+    """
+    location_result = mcp__arango_mcp__arango_query(query=location_query, bindVars={"location_key": location_key})
+    logger.info(f"Location document: {json.dumps(location_result, indent=2)}")
+    
+    # Try different query formats to see what works
+    logger.info("Trying different query formats:")
+    
+    # Query 1: Direct key in references.listened_at
+    query1 = """
+    FOR music IN AblationMusicActivity
+    FILTER music.artist == @artist
+    FILTER music.references.listened_at ANY == @location_id
+    RETURN music
+    """
+    result1 = mcp__arango_mcp__arango_query(query=query1, bindVars={"artist": artist, "location_id": location_id})
+    logger.info(f"Query 1 (direct ID in references.listened_at): {len(result1)} results")
+    
+    # Query 2: Join with location
+    query2 = """
+    FOR music IN AblationMusicActivity
+    FILTER music.artist == @artist
+    FOR location IN AblationLocationActivity
+    FILTER location._id == @location_id
+    FILTER music.references.listened_at ANY == location._id
+    RETURN music
+    """
+    result2 = mcp__arango_mcp__arango_query(query=query2, bindVars={"artist": artist, "location_id": location_id})
+    logger.info(f"Query 2 (join with location): {len(result2)} results")
+    
+    # Query 3: Direct search by artist
+    query3 = """
+    FOR music IN AblationMusicActivity
+    FILTER music.artist == @artist
+    RETURN music
+    """
+    result3 = mcp__arango_mcp__arango_query(query=query3, bindVars={"artist": artist})
+    logger.info(f"Query 3 (direct search by artist): {len(result3)} results")
+    
+    # Query 4: Direct search by _key
+    query4 = """
+    FOR music IN AblationMusicActivity
+    FILTER music._key == @music_key
+    RETURN music
+    """
+    result4 = mcp__arango_mcp__arango_query(query=query4, bindVars={"music_key": music_key})
+    logger.info(f"Query 4 (direct search by _key): {len(result4)} results")
+    
+    return True
+
+
 def generate_test_data(db, entity_registry):
     """Generate minimal test data for cross-collection queries."""
     logger = logging.getLogger(__name__)
@@ -148,7 +242,7 @@ def generate_test_data(db, entity_registry):
         sys.exit(1)  # Fail-stop immediately
     
     # Generate music with location reference
-    music = generate_basic_music(location["id"])
+    music = generate_basic_music(f"AblationLocationActivity/{location['_key']}")
     
     # Store music
     try:
@@ -243,7 +337,7 @@ def main():
     # Set up logging
     logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
     logger = logging.getLogger(__name__)
-
+    
     # Set up the database
     db, db_config = setup_database()
     
@@ -252,6 +346,9 @@ def main():
     
     # Generate test data
     entities = generate_test_data(db, entity_registry)
+    
+    # Verify the query format first using MCP ArangoDB tools
+    verify_cross_collection_query(db, entities)
     
     # Run the ablation test
     results = run_cross_collection_ablation_test(entities)
