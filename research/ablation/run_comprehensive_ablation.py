@@ -490,13 +490,23 @@ def generate_cross_collection_queries(
                 except Exception as e:
                     logging.exception(f"Error checking music data: {e}")
 
-            # Generate deterministic query ID
-            query_id = generate_deterministic_uuid(f"query:{collection1}:{collection2}:{i}")
+            # Generate a unique base query ID for this iteration
+            base_query_id = generate_deterministic_uuid(f"query:{collection1}:{collection2}:{i}")
 
             # Generate matching entities for each collection
             matching_entities = {}
+            collection_query_ids = {}  # Track query IDs for each collection
 
             for collection in collection_pair:
+                # Generate collection-specific query ID to avoid conflicts
+                # This ensures we have a unique UUID for each collection of the same query
+                # Crucial to avoid constraint violation in truth tables
+                collection_query_id = generate_deterministic_uuid(f"query:{collection}:{i}:{base_query_id}")
+                collection_query_ids[collection] = collection_query_id
+
+                # Log the new approach
+                logging.info(f"Using collection-specific query ID for {collection}: {collection_query_id}")
+
                 # Query the database for real document keys instead of generating random ones
                 try:
                     # Get 5 actual document keys from the collection
@@ -522,19 +532,19 @@ def generate_cross_collection_queries(
                     if entity_ids:
                         logging.info(f"Debug: Sample entity ID: {entity_ids[0]}")
 
-                    # Store truth data with composite key
-                    store_success = ablation_tester.store_truth_data(query_id, collection, entity_ids)
+                    # Store truth data with composite key, using collection-specific query ID
+                    store_success = ablation_tester.store_truth_data(collection_query_id, collection, entity_ids)
                 except Exception as e:
                     logging.exception(f"Error querying collection {collection}: {e}")
                     store_success = False
                 if not store_success:
-                    logging.error(f"Failed to store truth data for query {query_id} in collection {collection}")
+                    logging.error(f"Failed to store truth data for query {collection_query_id} in collection {collection}")
                 else:
                     logging.info(f"Debug: Successfully stored {len(entity_ids)} truth records for {collection}")
 
                     # Verify truth data was stored correctly
                     try:
-                        retrieved_truth = ablation_tester.get_truth_data(query_id, collection)
+                        retrieved_truth = ablation_tester.get_truth_data(collection_query_id, collection)
                         logging.info(f"Debug: Retrieved {len(retrieved_truth)} truth entities for {collection}")
                         if len(retrieved_truth) != len(entity_ids):
                             logging.error(
@@ -545,14 +555,15 @@ def generate_cross_collection_queries(
 
                 matching_entities[collection] = entity_ids
 
-            # Add query to the list
+            # Add query to the list with collection-specific query IDs
             queries.append(
                 {
-                    "id": str(query_id),
+                    "id": str(base_query_id),  # Keep base query ID for reference
                     "text": query_text,
                     "type": "cross_collection",
                     "collections": collection_pair,
                     "matching_entities": matching_entities,
+                    "collection_query_ids": {col: str(qid) for col, qid in collection_query_ids.items()},
                 },
             )
 
@@ -576,9 +587,10 @@ def test_ablation_impact(ablation_tester: AblationTester, queries: list[dict[str
     impact_metrics = {}
 
     for query in queries:
-        query_id = uuid.UUID(query["id"])
+        base_query_id = uuid.UUID(query["id"])
         query_text = query["text"]
         collections = query.get("collections", [])
+        collection_query_ids = query.get("collection_query_ids", {})
 
         logging.info(f"Testing ablation impact for query: '{query_text}'")
 
@@ -591,16 +603,94 @@ def test_ablation_impact(ablation_tester: AblationTester, queries: list[dict[str
             verbose=True,
         )
 
-        # Run the ablation test
-        results = ablation_tester.run_ablation_test(config, query_id, query_text)
+        # Modify run_ablation_test to handle collection-specific query IDs
+        # We need to pass both the base query ID and collection-specific IDs
+        results = {}
+
+        # First run a baseline test with all collections available
+        baseline_results = {}
+        for collection_name in collections:
+            # Use the collection-specific query ID if available
+            collection_query_id = uuid.UUID(collection_query_ids.get(collection_name, str(base_query_id)))
+
+            logging.info(f"Using collection-specific query ID for baseline test on {collection_name}: {collection_query_id}")
+
+            # Run the test with or without related collections
+            baseline_metrics = ablation_tester.test_ablation(
+                collection_query_id, query_text, collection_name, config.query_limit, []
+            )
+
+            baseline_results[collection_name] = baseline_metrics
+            logging.info(
+                f"Baseline metrics for {collection_name}: Precision={baseline_metrics.precision:.2f}, "
+                f"Recall={baseline_metrics.recall:.2f}, F1={baseline_metrics.f1_score:.2f}"
+            )
+
+        # Now perform actual ablation tests for each collection
+        for collection_to_ablate in collections:
+            # Actually ablate the collection by backing up and removing its data
+            logging.info(f"Performing actual ablation of collection {collection_to_ablate}...")
+
+            ablation_success = ablation_tester.ablate_collection(collection_to_ablate)
+            if not ablation_success:
+                logging.error(f"CRITICAL: Failed to ablate collection {collection_to_ablate}")
+                sys.exit(1)  # Fail-stop immediately
+
+            # For each test collection, measure the impact of this ablation
+            for test_collection in collections:
+                if test_collection != collection_to_ablate:
+                    impact_key = f"{collection_to_ablate}_impact_on_{test_collection}"
+
+                    # Use the collection-specific query ID for the test collection
+                    test_collection_query_id = uuid.UUID(collection_query_ids.get(test_collection, str(base_query_id)))
+
+                    logging.info(f"Using collection-specific query ID for ablation test on {test_collection}: {test_collection_query_id}")
+
+                    # Measure the actual impact on this collection's queries
+                    logging.info(
+                        f"Measuring impact of ablating {collection_to_ablate} on {test_collection} queries...",
+                    )
+
+                    # Run the test with the collection ablated
+                    ablated_metrics = ablation_tester.test_ablation(
+                        test_collection_query_id, query_text, test_collection, config.query_limit, []
+                    )
+
+                    # Get the baseline for comparison
+                    baseline = baseline_results[test_collection]
+
+                    # Store the result with measured impact
+                    results[impact_key] = ablated_metrics
+
+                    # Report the impact
+                    logging.info(
+                        f"Measured impact of ablating {collection_to_ablate} on {test_collection}: "
+                        f"F1 changed from {baseline.f1_score:.2f} to {ablated_metrics.f1_score:.2f}",
+                    )
+
+                    # Add cross-collection context to the results
+                    if hasattr(ablated_metrics, "metadata"):
+                        ablated_metrics.metadata["ablated_collection"] = collection_to_ablate
+                    else:
+                        ablated_metrics.metadata = {
+                            "ablated_collection": collection_to_ablate,
+                        }
+
+            # Restore the ablated collection before testing the next one
+            logging.info(f"Restoring collection {collection_to_ablate}...")
+            restore_success = ablation_tester.restore_collection(collection_to_ablate)
+            if not restore_success:
+                logging.error(f"CRITICAL: Failed to restore collection {collection_to_ablate}")
+                sys.exit(1)  # Fail-stop immediately
 
         # Store the results - Fix for Pydantic V2 deprecation warning
-        impact_metrics[str(query_id)] = {
+        impact_metrics[str(base_query_id)] = {
             "query_text": query_text,
             "results": {k: r.model_dump() for k, r in results.items()},
+            "collection_query_ids": collection_query_ids,  # Store for reference
         }
 
-        logging.info(f"Completed ablation test for query {query_id}")
+        logging.info(f"Completed ablation test for query {base_query_id}")
 
     return impact_metrics
 
@@ -1049,13 +1139,19 @@ def main():
                 if "_impact_on_" in impact_key:
                     _, target_collection = impact_key.split("_impact_on_")
 
-                    # Add truth data info
+                    # Add truth data info using collection-specific query ID
                     try:
-                        truth_data = ablation_tester.get_truth_data(uuid.UUID(query_id), target_collection)
+                        # Get the collection-specific query ID from the results
+                        collection_query_ids = query_data.get("collection_query_ids", {})
+                        collection_specific_id = collection_query_ids.get(target_collection, query_id)
+
+                        # Use the collection-specific query ID to get truth data
+                        truth_data = ablation_tester.get_truth_data(uuid.UUID(collection_specific_id), target_collection)
                         result["truth_data"] = list(truth_data)
                         result["truth_data_count"] = len(truth_data)
+                        result["collection_query_id"] = collection_specific_id  # Store for reference
                     except Exception as e:
-                        logger.error(f"Error getting truth data for query {query_id}: {e}")
+                        logger.error(f"Error getting truth data for query {query_id} (collection: {target_collection}): {e}")
 
         json.dump(serializable_metrics, f, indent=2)
 
