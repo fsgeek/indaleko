@@ -229,10 +229,11 @@ def run_cross_collection_ablation_test(entities):
     logger.info("\nAblation Test Results:")
     for key, result in results.items():
         logger.info(f"{key}:")
-        logger.info(f"  Found: {len(result.results)}")
-        logger.info(f"  Precision: {result.metrics.precision:.2f}")
-        logger.info(f"  Recall: {result.metrics.recall:.2f}")
-        logger.info(f"  F1: {result.metrics.f1:.2f}")
+        logger.info(f"  Found: {result.result_count}")
+        logger.info(f"  Precision: {result.precision:.2f}")
+        logger.info(f"  Recall: {result.recall:.2f}")
+        logger.info(f"  F1: {result.f1_score:.2f}")
+        logger.info(f"  Impact: {result.impact:.2f}")
     
     return results
 
