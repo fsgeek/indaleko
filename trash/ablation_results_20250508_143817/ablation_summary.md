@@ -1,0 +1,47 @@
+# Ablation Study Results Summary
+Date: 2025-05-08 14:38:34
+## Overview
+This report summarizes the results of ablation testing for 2 activity types: Location, Music.
+
+A total of 5 test queries were evaluated, generating 10 impact measurements.
+## Impact Summary
+### Average Impact by Collection
+Impact represents how much query performance degrades when a collection is removed.
+Higher values indicate more important collections.
+
+| Collection | Average Impact | Precision | Recall | F1 Score |
+|------------|---------------|-----------|--------|----------|
+| Location | 1.000 | 0.000 | 0.000 | 0.000 |
+| Music | 1.000 | 0.000 | 0.000 | 0.000 |
+
+## Cross-Collection Dependencies
+This table shows how ablating each collection (rows) affects queries targeting other collections (columns).
+
+| Source \ Target | Location | Music |
+|---------------|---------------|---------------|
+| Location | N/A | 1.000 |
+| Music | 1.000 | N/A |
+
+## Query Analysis
+### Most Affected Queries
+| Query | Source Collection | Target Collection | Impact |
+|-------|-------------------|-------------------|--------|
+| Starbucks receipts | Location | Music | 1.000 |
+| Starbucks receipts | Music | Location | 1.000 |
+| Where did Sarah save the Quarterly_Report.xlsx whe... | Location | Music | 1.000 |
+| Where did Sarah save the Quarterly_Report.xlsx whe... | Music | Location | 1.000 |
+| Show me all presentations created by the team duri... | Location | Music | 1.000 |
+
+## Recommendations
+Based on the ablation results, the following collections have high impact scores and should be prioritized in the search infrastructure:
+
+- **Location**: Impact score 1.000
+- **Music**: Impact score 1.000
+
+The strongest cross-collection dependencies were found between:
+
+- **Location** → **Music**: Impact 1.000
+- **Music** → **Location**: Impact 1.000
+- **Location** → **Music**: Impact 1.000
+
+These dependencies suggest that optimizing collection relationships could improve search performance by leveraging cross-collection information.

@@ -27,14 +27,14 @@ Direct database access is available through MCP tools:
 
 Use these tools to verify database state, diagnose issues, and confirm that code problems aren't actually database connectivity issues. Following the fail-stop model for database operations, any genuine database connectivity issue requires immediate attention.
 
-## Current Work: Comprehensive Ablation Study Framework
+## Current Work: Scientific Ablation Framework for Thesis Research
 
-We are implementing and refining our comprehensive ablation study framework for scientifically measuring how different activity data types affect query precision and recall. This framework provides controlled testing across all six activity data categories to produce publication-quality research results.
+The comprehensive ablation study framework provides rigorous scientific measurements of how different activity data types affect search precision and recall. This framework implements proper experimental design principles including control groups, multi-round experiments with collection rotation, and power-set testing across all six activity data categories.
 
 ### Ablation Framework Implementation Status
 
 - ✅ Completed BaseActivityRecorder for standardized database interactions
-- ✅ Implemented all three activity type collectors and recorders with proper inheritance
+- ✅ Implemented all six activity type collectors and recorders with proper inheritance
 - ✅ Enhanced AblationTester with proper truth data validation
 - ✅ Added semantic search queries instead of direct key lookups
 - ✅ Integrated LLM-driven query generator for realistic user queries
@@ -42,8 +42,11 @@ We are implementing and refining our comprehensive ablation study framework for 
 - ✅ Implemented proper fail-stop behavior with immediate feedback
 - ✅ Added diverse query templates as fallback
 - ✅ Fixed Pydantic V2 compatibility issues
-- 🔄 Adding integration with experimental LLM query generator from scratch/
-- 🔄 Implementing more activity types (Collaboration, Storage, Media)
+- ✅ Fixed truth data uniqueness issues for multi-round experiments
+- ✅ Implemented test/control group separation for scientific rigor
+- ✅ Added collection rotation between experimental rounds
+- ✅ Implemented power-set testing of collection combinations
+- ✅ Enhanced visualization and statistical reporting
 
 ### Activity Data Types Being Studied
 
@@ -150,6 +153,73 @@ The AblationTester now follows this improved workflow:
 - **Query Diversity** - Each query uses different template, parameters, or LLM generation
 - **Improved Error Detection** - Fail-stop with clear error messages
 - **Truth Data Integrity** - Uses actual database keys for expected matches
+- **Scientific Experimental Design** - Test/control groups with proper separation
+- **Multi-Round Experiments** - Collection rotation between rounds for comprehensive coverage
+- **Statistical Robustness** - Multiple rounds of testing for statistical significance
+
+### Running Comprehensive Ablation Experiments
+
+The framework supports comprehensive scientific ablation experiments with the following commands:
+
+```bash
+# Run a full 3-round experiment with 40% control group and visualization
+python research/ablation/run_comprehensive_experiment.py --rounds 3 --control-pct 0.4 --visualize
+
+# Run with customized parameters
+python research/ablation/run_comprehensive_experiment.py \
+    --rounds 3 \
+    --control-pct 0.4 \
+    --output-dir ./my_experiment_results \
+    --visualize \
+    --count 100 \
+    --queries 50 \
+    --max-combos 200 \
+    --seed 42
+
+# Capture detailed logs for debugging
+python research/ablation/run_comprehensive_experiment.py --rounds 3 --control-pct 0.4 --visualize > experiment_log.txt 2>&1
+```
+
+#### Common Issues and Solutions
+
+1. **Truth Data Inconsistencies**:
+   - Fixed in `ablation_tester.py` by using full collection names in composite keys
+   - Fixed duplicate document issues by using unique composite keys for query_id field
+
+2. **Database Resource Limitations**:
+   - Use `--max-combos` to limit the number of collection combinations tested
+   - Use `--count` and `--queries` to control test data volume
+
+3. **Long-Running Experiments**:
+   - Tests typically take 20-60 minutes depending on parameters
+   - Results are saved after each round in the output directory
+
+### Query Analysis and Database Optimization
+
+The ablation framework includes a query analysis tool to evaluate and optimize AQL queries:
+
+```bash
+# Analyze ablation queries and generate optimization recommendations
+python scripts/analyze_ablation_queries.py \
+    --input-file ./ablation_results_comprehensive/impact_metrics.json \
+    --output-file ./ablation_query_analysis.json \
+    --markdown-report ./ablation_query_analysis.md \
+    --index-script ./create_ablation_indices.js
+
+# For quicker analysis, skip EXPLAIN operations
+python scripts/analyze_ablation_queries.py --skip-explain
+```
+
+This tool helps identify:
+- Full collection scans that could benefit from indexing
+- High-cost queries that need optimization
+- Optimal index strategies for frequently queried fields
+- Text fields that would benefit from ArangoSearch views
+
+The tool generates:
+1. A detailed JSON analysis
+2. A human-readable markdown report
+3. A ready-to-use ArangoDB index creation script
 
 ## Architectural Principles
 

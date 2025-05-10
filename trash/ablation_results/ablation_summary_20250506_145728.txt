@@ -1,0 +1,503 @@
+Indaleko Ablation Study Summary - 20250506_145728
+==================================================
+
+Study Configuration
+--------------------
+Run ID: ablation_20250506_145728
+Random Seed: 42
+Activity Collections: 5
+Control Group: 2 collections
+Study Group: 3 collections
+
+Summary Metrics by Phase
+--------------------
+Phase: phase1 - Study queries with ablated study collections
+  Precision: 1.0000
+  Recall: 1.0000
+  F1 Score: 1.0000
+  Impact: 0.0000
+  Query Count: 10
+
+Phase: phase2 - Control queries with ablated study collections
+  Precision: 1.0000
+  Recall: 1.0000
+  F1 Score: 1.0000
+  Impact: 0.0000
+  Query Count: 10
+
+Phase: phase3 - Study queries with ablated control collections
+  Precision: 1.0000
+  Recall: 1.0000
+  F1 Score: 1.0000
+  Impact: 0.0000
+  Query Count: 10
+
+Phase: phase4 - Control queries with ablated control collections
+  Precision: 1.0000
+  Recall: 1.0000
+  F1 Score: 1.0000
+  Impact: 0.0000
+  Query Count: 10
+
+Collection Groups
+--------------------
+Control Group Collections:
+  - TempActivityContext
+  - GeoActivityContext
+
+Study Group Collections:
+  - ActivityDataProviders
+  - ActivityContext
+  - MusicActivityContext
+
+
+Detailed Results
+--------------------
+
+Phase: phase1 - Study queries with ablated study collections
+  Query: Show calendar events from last week
+    Baseline Results: 0
+    Ablated Results: 0
+    Precision: 1.0000
+    Recall: 1.0000
+    F1 Score: 1.0000
+    Impact: 0.0000
+    True Positives: 0
+    False Positives: 0
+    False Negatives: 0
+
+  Query: What files did I share during the budget meeting?
+    Baseline Results: 0
+    Ablated Results: 0
+    Precision: 1.0000
+    Recall: 1.0000
+    F1 Score: 1.0000
+    Impact: 0.0000
+    True Positives: 0
+    False Positives: 0
+    False Negatives: 0
+
+  Query: Find documents I edited while using Microsoft Word
+    Baseline Results: 0
+    Ablated Results: 0
+    Precision: 1.0000
+    Recall: 1.0000
+    F1 Score: 1.0000
+    Impact: 0.0000
+    True Positives: 0
+    False Positives: 0
+    False Negatives: 0
+
+  Query: Show me files I viewed during my video call with the marketing team
+    Baseline Results: 0
+    Ablated Results: 0
+    Precision: 1.0000
+    Recall: 1.0000
+    F1 Score: 1.0000
+    Impact: 0.0000
+    True Positives: 0
+    False Positives: 0
+    False Negatives: 0
+
+  Query: Show me recently deleted spreadsheets
+    Baseline Results: 0
+    Ablated Results: 0
+    Precision: 1.0000
+    Recall: 1.0000
+    F1 Score: 1.0000
+    Impact: 0.0000
+    True Positives: 0
+    False Positives: 0
+    False Negatives: 0
+
+  Query: Find all music I listened to last week
+    Baseline Results: 0
+    Ablated Results: 0
+    Precision: 1.0000
+    Recall: 1.0000
+    F1 Score: 1.0000
+    Impact: 0.0000
+    True Positives: 0
+    False Positives: 0
+    False Negatives: 0
+
+  Query: Show me songs by Taylor Swift I played recently
+    Baseline Results: 0
+    Ablated Results: 0
+    Precision: 1.0000
+    Recall: 1.0000
+    F1 Score: 1.0000
+    Impact: 0.0000
+    True Positives: 0
+    False Positives: 0
+    False Negatives: 0
+
+  Query: Find notes I wrote during my visit to the library
+    Baseline Results: 0
+    Ablated Results: 0
+    Precision: 1.0000
+    Recall: 1.0000
+    F1 Score: 1.0000
+    Impact: 0.0000
+    True Positives: 0
+    False Positives: 0
+    False Negatives: 0
+
+  Query: What image files did I open last month?
+    Baseline Results: 0
+    Ablated Results: 0
+    Precision: 1.0000
+    Recall: 1.0000
+    F1 Score: 1.0000
+    Impact: 0.0000
+    True Positives: 0
+    False Positives: 0
+    False Negatives: 0
+
+  Query: What was the temperature in my house yesterday?
+    Baseline Results: 0
+    Ablated Results: 0
+    Precision: 1.0000
+    Recall: 1.0000
+    F1 Score: 1.0000
+    Impact: 0.0000
+    True Positives: 0
+    False Positives: 0
+    False Negatives: 0
+
+
+Phase: phase2 - Control queries with ablated study collections
+  Query: Show me files I uploaded to Google Drive recently
+    Baseline Results: 0
+    Ablated Results: 0
+    Precision: 1.0000
+    Recall: 1.0000
+    F1 Score: 1.0000
+    Impact: 0.0000
+    True Positives: 0
+    False Positives: 0
+    False Negatives: 0
+
+  Query: What documents did I edit while at the office?
+    Baseline Results: 0
+    Ablated Results: 0
+    Precision: 1.0000
+    Recall: 1.0000
+    F1 Score: 1.0000
+    Impact: 0.0000
+    True Positives: 0
+    False Positives: 0
+    False Negatives: 0
+
+  Query: Find documents I worked on while at the coffee shop
+    Baseline Results: 0
+    Ablated Results: 0
+    Precision: 1.0000
+    Recall: 1.0000
+    F1 Score: 1.0000
+    Impact: 0.0000
+    True Positives: 0
+    False Positives: 0
+    False Negatives: 0
+
+  Query: Find files I edited while multitasking between browser and Excel
+    Baseline Results: 0
+    Ablated Results: 0
+    Precision: 1.0000
+    Recall: 1.0000
+    F1 Score: 1.0000
+    Impact: 0.0000
+    True Positives: 0
+    False Positives: 0
+    False Negatives: 0
+
+  Query: What documents did I work on while running the database application?
+    Baseline Results: 0
+    Ablated Results: 0
+    Precision: 1.0000
+    Recall: 1.0000
+    F1 Score: 1.0000
+    Impact: 0.0000
+    True Positives: 0
+    False Positives: 0
+    False Negatives: 0
+
+  Query: Show me documents I collaborated on with Sarah
+    Baseline Results: 0
+    Ablated Results: 0
+    Precision: 1.0000
+    Recall: 1.0000
+    F1 Score: 1.0000
+    Impact: 0.0000
+    True Positives: 0
+    False Positives: 0
+    False Negatives: 0
+
+  Query: Find all files shared with me by email last month
+    Baseline Results: 0
+    Ablated Results: 0
+    Precision: 1.0000
+    Recall: 1.0000
+    F1 Score: 1.0000
+    Impact: 0.0000
+    True Positives: 0
+    False Positives: 0
+    False Negatives: 0
+
+  Query: Show me photos taken at home last weekend
+    Baseline Results: 0
+    Ablated Results: 0
+    Precision: 1.0000
+    Recall: 1.0000
+    F1 Score: 1.0000
+    Impact: 0.0000
+    True Positives: 0
+    False Positives: 0
+    False Negatives: 0
+
+  Query: What files did I access while traveling to Seattle?
+    Baseline Results: 0
+    Ablated Results: 0
+    Precision: 1.0000
+    Recall: 1.0000
+    F1 Score: 1.0000
+    Impact: 0.0000
+    True Positives: 0
+    False Positives: 0
+    False Negatives: 0
+
+  Query: Find all PDF files I modified last week
+    Baseline Results: 0
+    Ablated Results: 0
+    Precision: 1.0000
+    Recall: 1.0000
+    F1 Score: 1.0000
+    Impact: 0.0000
+    True Positives: 0
+    False Positives: 0
+    False Negatives: 0
+
+
+Phase: phase3 - Study queries with ablated control collections
+  Query: Show calendar events from last week
+    Baseline Results: 0
+    Ablated Results: 0
+    Precision: 1.0000
+    Recall: 1.0000
+    F1 Score: 1.0000
+    Impact: 0.0000
+    True Positives: 0
+    False Positives: 0
+    False Negatives: 0
+
+  Query: What files did I share during the budget meeting?
+    Baseline Results: 0
+    Ablated Results: 0
+    Precision: 1.0000
+    Recall: 1.0000
+    F1 Score: 1.0000
+    Impact: 0.0000
+    True Positives: 0
+    False Positives: 0
+    False Negatives: 0
+
+  Query: Find documents I edited while using Microsoft Word
+    Baseline Results: 0
+    Ablated Results: 0
+    Precision: 1.0000
+    Recall: 1.0000
+    F1 Score: 1.0000
+    Impact: 0.0000
+    True Positives: 0
+    False Positives: 0
+    False Negatives: 0
+
+  Query: Show me files I viewed during my video call with the marketing team
+    Baseline Results: 0
+    Ablated Results: 0
+    Precision: 1.0000
+    Recall: 1.0000
+    F1 Score: 1.0000
+    Impact: 0.0000
+    True Positives: 0
+    False Positives: 0
+    False Negatives: 0
+
+  Query: Show me recently deleted spreadsheets
+    Baseline Results: 0
+    Ablated Results: 0
+    Precision: 1.0000
+    Recall: 1.0000
+    F1 Score: 1.0000
+    Impact: 0.0000
+    True Positives: 0
+    False Positives: 0
+    False Negatives: 0
+
+  Query: Find all music I listened to last week
+    Baseline Results: 0
+    Ablated Results: 0
+    Precision: 1.0000
+    Recall: 1.0000
+    F1 Score: 1.0000
+    Impact: 0.0000
+    True Positives: 0
+    False Positives: 0
+    False Negatives: 0
+
+  Query: Show me songs by Taylor Swift I played recently
+    Baseline Results: 0
+    Ablated Results: 0
+    Precision: 1.0000
+    Recall: 1.0000
+    F1 Score: 1.0000
+    Impact: 0.0000
+    True Positives: 0
+    False Positives: 0
+    False Negatives: 0
+
+  Query: Find notes I wrote during my visit to the library
+    Baseline Results: 0
+    Ablated Results: 0
+    Precision: 1.0000
+    Recall: 1.0000
+    F1 Score: 1.0000
+    Impact: 0.0000
+    True Positives: 0
+    False Positives: 0
+    False Negatives: 0
+
+  Query: What image files did I open last month?
+    Baseline Results: 0
+    Ablated Results: 0
+    Precision: 1.0000
+    Recall: 1.0000
+    F1 Score: 1.0000
+    Impact: 0.0000
+    True Positives: 0
+    False Positives: 0
+    False Negatives: 0
+
+  Query: What was the temperature in my house yesterday?
+    Baseline Results: 0
+    Ablated Results: 0
+    Precision: 1.0000
+    Recall: 1.0000
+    F1 Score: 1.0000
+    Impact: 0.0000
+    True Positives: 0
+    False Positives: 0
+    False Negatives: 0
+
+
+Phase: phase4 - Control queries with ablated control collections
+  Query: Show me files I uploaded to Google Drive recently
+    Baseline Results: 0
+    Ablated Results: 0
+    Precision: 1.0000
+    Recall: 1.0000
+    F1 Score: 1.0000
+    Impact: 0.0000
+    True Positives: 0
+    False Positives: 0
+    False Negatives: 0
+
+  Query: What documents did I edit while at the office?
+    Baseline Results: 0
+    Ablated Results: 0
+    Precision: 1.0000
+    Recall: 1.0000
+    F1 Score: 1.0000
+    Impact: 0.0000
+    True Positives: 0
+    False Positives: 0
+    False Negatives: 0
+
+  Query: Find documents I worked on while at the coffee shop
+    Baseline Results: 0
+    Ablated Results: 0
+    Precision: 1.0000
+    Recall: 1.0000
+    F1 Score: 1.0000
+    Impact: 0.0000
+    True Positives: 0
+    False Positives: 0
+    False Negatives: 0
+
+  Query: Find files I edited while multitasking between browser and Excel
+    Baseline Results: 0
+    Ablated Results: 0
+    Precision: 1.0000
+    Recall: 1.0000
+    F1 Score: 1.0000
+    Impact: 0.0000
+    True Positives: 0
+    False Positives: 0
+    False Negatives: 0
+
+  Query: What documents did I work on while running the database application?
+    Baseline Results: 0
+    Ablated Results: 0
+    Precision: 1.0000
+    Recall: 1.0000
+    F1 Score: 1.0000
+    Impact: 0.0000
+    True Positives: 0
+    False Positives: 0
+    False Negatives: 0
+
+  Query: Show me documents I collaborated on with Sarah
+    Baseline Results: 0
+    Ablated Results: 0
+    Precision: 1.0000
+    Recall: 1.0000
+    F1 Score: 1.0000
+    Impact: 0.0000
+    True Positives: 0
+    False Positives: 0
+    False Negatives: 0
+
+  Query: Find all files shared with me by email last month
+    Baseline Results: 0
+    Ablated Results: 0
+    Precision: 1.0000
+    Recall: 1.0000
+    F1 Score: 1.0000
+    Impact: 0.0000
+    True Positives: 0
+    False Positives: 0
+    False Negatives: 0
+
+  Query: Show me photos taken at home last weekend
+    Baseline Results: 0
+    Ablated Results: 0
+    Precision: 1.0000
+    Recall: 1.0000
+    F1 Score: 1.0000
+    Impact: 0.0000
+    True Positives: 0
+    False Positives: 0
+    False Negatives: 0
+
+  Query: What files did I access while traveling to Seattle?
+    Baseline Results: 0
+    Ablated Results: 0
+    Precision: 1.0000
+    Recall: 1.0000
+    F1 Score: 1.0000
+    Impact: 0.0000
+    True Positives: 0
+    False Positives: 0
+    False Negatives: 0
+
+  Query: Find all PDF files I modified last week
+    Baseline Results: 0
+    Ablated Results: 0
+    Precision: 1.0000
+    Recall: 1.0000
+    F1 Score: 1.0000
+    Impact: 0.0000
+    True Positives: 0
+    False Positives: 0
+    False Negatives: 0
+

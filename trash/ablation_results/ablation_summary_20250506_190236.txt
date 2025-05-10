@@ -1,0 +1,11 @@
+Indaleko Ablation Test Summary
+=============================
+
+Test run: 20250506_190236
+Dataset size: 50
+
+Collection Impact Metrics
+----------------------
+
+Detailed Query Results
+--------------------

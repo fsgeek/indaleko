@@ -1,0 +1,106 @@
+Indaleko Ablation Test Summary
+=============================
+
+Test run: 20250506_100551
+
+Collection Impact Metrics
+----------------------
+all_activity:
+  Precision: 1.0000
+  Recall: 0.5763
+  F1 Score: 0.7312
+  Impact: 0.2688
+ActivityContext:
+  Precision: 1.0000
+  Recall: 0.5763
+  F1 Score: 0.7312
+  Impact: 0.2688
+MusicActivityContext:
+  Precision: 1.0000
+  Recall: 1.0000
+  F1 Score: 1.0000
+  Impact: 0.0000
+GeoActivityContext:
+  Precision: 1.0000
+  Recall: 1.0000
+  F1 Score: 1.0000
+  Impact: 0.0000
+
+Detailed Query Results
+--------------------
+
+Query: Find all documents I worked on yesterday
+  With ActivityContext ablated:
+    Results: 680
+    Precision: 1.0000
+    Recall: 0.5763
+    F1 Score: 0.7312
+    Impact Score: 0.2688
+    True Positives: 680
+    False Positives: 0
+    False Negatives: 500
+  With MusicActivityContext ablated:
+    Results: 1180
+    Precision: 1.0000
+    Recall: 1.0000
+    F1 Score: 1.0000
+    Impact Score: 0.0000
+    True Positives: 1180
+    False Positives: 0
+    False Negatives: 0
+  With GeoActivityContext ablated:
+    Results: 1180
+    Precision: 1.0000
+    Recall: 1.0000
+    F1 Score: 1.0000
+    Impact Score: 0.0000
+    True Positives: 1180
+    False Positives: 0
+    False Negatives: 0
+  With all_activity ablated:
+    Results: 680
+    Precision: 1.0000
+    Recall: 0.5763
+    F1 Score: 0.7312
+    Impact Score: 0.2688
+    True Positives: 680
+    False Positives: 0
+    False Negatives: 500
+
+Query: Find PDF files I opened in Microsoft Word
+  With ActivityContext ablated:
+    Results: 680
+    Precision: 1.0000
+    Recall: 0.5763
+    F1 Score: 0.7312
+    Impact Score: 0.2688
+    True Positives: 680
+    False Positives: 0
+    False Negatives: 500
+  With MusicActivityContext ablated:
+    Results: 1180
+    Precision: 1.0000
+    Recall: 1.0000
+    F1 Score: 1.0000
+    Impact Score: 0.0000
+    True Positives: 1180
+    False Positives: 0
+    False Negatives: 0
+  With GeoActivityContext ablated:
+    Results: 1180
+    Precision: 1.0000
+    Recall: 1.0000
+    F1 Score: 1.0000
+    Impact Score: 0.0000
+    True Positives: 1180
+    False Positives: 0
+    False Negatives: 0
+  With all_activity ablated:
+    Results: 680
+    Precision: 1.0000
+    Recall: 0.5763
+    F1 Score: 0.7312
+    Impact Score: 0.2688
+    True Positives: 680
+    False Positives: 0
+    False Negatives: 500

@@ -1766,6 +1766,12 @@ class AblationTester:
         Returns:
             bool: True if storing succeeded.
         """
+        # TRACE DEBUGGING: Add a stack trace to identify the call path
+        import traceback
+        stack = traceback.extract_stack()
+        caller = stack[-2]  # Get the caller of this function
+        self.logger.info(f"TRACE: store_truth_data called for {query_id}/{collection_name} from {caller.filename}:{caller.lineno}")
+
         if not self.db:
             self.logger.error("No database connection available")
             sys.exit(1)  # Fail-stop immediately - we can't proceed without DB
@@ -1859,6 +1865,15 @@ class AblationTester:
                     self.logger.warning(f"Existing: {len(existing_entities)} entities, New: {len(new_entities)} entities")
                     self.logger.warning(f"Difference: {len(existing_entities.symmetric_difference(new_entities))} entities")
 
+                    # TRACE DEBUGGING: Print more details about the conflicting data
+                    self.logger.warning(f"Existing entities: {existing_entities}")
+                    self.logger.warning(f"New entities: {new_entities}")
+
+                    # Print full stack trace to identify the call path that's causing conflicts
+                    self.logger.warning("Call stack trace:")
+                    for frame in stack:
+                        self.logger.warning(f"  File {frame.filename}, line {frame.lineno}, in {frame.name}")
+
                     # CHANGED: Do NOT update existing truth data to ensure scientific consistency
                     # This ensures that once truth data is set for a query/collection, it remains stable
                     self.logger.info(f"Retaining existing truth data for query {query_id} in collection {collection_name}")
@@ -1893,6 +1908,12 @@ class AblationTester:
                             self.logger.error(f"Existing document has {len(existing_entities)} entities")
                             self.logger.error(f"New document has {len(new_entities)} entities")
                             self.logger.error("This suggests a logic bug in query generation")
+
+                            # Print full stack trace to identify the call path
+                            self.logger.error("Call stack trace:")
+                            for frame in stack:
+                                self.logger.error(f"  File {frame.filename}, line {frame.lineno}, in {frame.name}")
+
                             sys.exit(1)  # Fail-stop immediately - this is a critical logic error
                 except Exception as fetch_error:
                     self.logger.error(f"Failed to fetch conflicting document: {fetch_error}")

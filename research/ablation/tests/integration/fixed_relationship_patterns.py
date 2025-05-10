@@ -6,6 +6,7 @@ to ensure schema compliance when inserting documents into the database.
 
 import random
 import uuid
+import json
 from datetime import datetime, timezone, timedelta
 from typing import Any, Dict, List, Tuple, Optional
 

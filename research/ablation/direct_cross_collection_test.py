@@ -385,7 +385,8 @@ def generate_test_data():
 
         try:
             final_result = arango_query(
-                query=final_query, bindVars={"location_id": location_ref1, "location_key": location_key},
+                query=final_query,
+                bindVars={"location_id": location_ref1, "location_key": location_key},
             )
             logger.info(f"Comprehensive test results: {len(final_result)}")
             logger.info(f"All matching documents: {json.dumps(final_result, indent=2)}")

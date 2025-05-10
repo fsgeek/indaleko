@@ -1,0 +1,102 @@
+Indaleko Ablation Study Summary - 20250506_130738
+==================================================
+
+Study Configuration
+--------------------
+Run ID: ablation_20250506_130738
+Random Seed: 42
+Activity Collections: 0
+Control Group: 0 collections
+Study Group: 0 collections
+
+Summary Metrics by Phase
+--------------------
+Phase: phase1 - Study queries with ablated study collections
+  Precision: 1.0000
+  Recall: 1.0000
+  F1 Score: 1.0000
+  Impact: 0.0000
+  Query Count: 1
+
+Phase: phase2 - Control queries with ablated study collections
+  Precision: 1.0000
+  Recall: 1.0000
+  F1 Score: 1.0000
+  Impact: 0.0000
+  Query Count: 1
+
+Phase: phase3 - Study queries with ablated control collections
+  Precision: 1.0000
+  Recall: 1.0000
+  F1 Score: 1.0000
+  Impact: 0.0000
+  Query Count: 1
+
+Phase: phase4 - Control queries with ablated control collections
+  Precision: 1.0000
+  Recall: 1.0000
+  F1 Score: 1.0000
+  Impact: 0.0000
+  Query Count: 1
+
+Collection Groups
+--------------------
+Control Group Collections:
+
+Study Group Collections:
+
+
+Detailed Results
+--------------------
+
+Phase: phase1 - Study queries with ablated study collections
+  Query: Show me photos taken at home last weekend
+    Baseline Results: 0
+    Ablated Results: 0
+    Precision: 1.0000
+    Recall: 1.0000
+    F1 Score: 1.0000
+    Impact: 0.0000
+    True Positives: 0
+    False Positives: 0
+    False Negatives: 0
+
+
+Phase: phase2 - Control queries with ablated study collections
+  Query: Show me recently deleted spreadsheets
+    Baseline Results: 0
+    Ablated Results: 0
+    Precision: 1.0000
+    Recall: 1.0000
+    F1 Score: 1.0000
+    Impact: 0.0000
+    True Positives: 0
+    False Positives: 0
+    False Negatives: 0
+
+
+Phase: phase3 - Study queries with ablated control collections
+  Query: Show me photos taken at home last weekend
+    Baseline Results: 0
+    Ablated Results: 0
+    Precision: 1.0000
+    Recall: 1.0000
+    F1 Score: 1.0000
+    Impact: 0.0000
+    True Positives: 0
+    False Positives: 0
+    False Negatives: 0
+
+
+Phase: phase4 - Control queries with ablated control collections
+  Query: Show me recently deleted spreadsheets
+    Baseline Results: 0
+    Ablated Results: 0
+    Precision: 1.0000
+    Recall: 1.0000
+    F1 Score: 1.0000
+    Impact: 0.0000
+    True Positives: 0
+    False Positives: 0
+    False Negatives: 0
+

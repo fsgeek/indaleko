@@ -415,7 +415,8 @@ def generate_cross_collection_queries(
                 # Generate queries with proper fail-stop approach - NO fallbacks
                 try:
                     activity_queries = generator.generate_enhanced_queries(
-                        activity_type, count=count // len(activity_types) + 1,
+                        activity_type,
+                        count=count // len(activity_types) + 1,
                     )
                     logging.info(
                         f"Successfully generated {len(activity_queries)} diverse queries for {activity_type} using LLM",
@@ -538,7 +539,9 @@ def generate_cross_collection_queries(
                     logging.exception(f"Error querying collection {collection}: {e}")
                     store_success = False
                 if not store_success:
-                    logging.error(f"Failed to store truth data for query {collection_query_id} in collection {collection}")
+                    logging.error(
+                        f"Failed to store truth data for query {collection_query_id} in collection {collection}",
+                    )
                 else:
                     logging.info(f"Debug: Successfully stored {len(entity_ids)} truth records for {collection}")
 
@@ -613,17 +616,19 @@ def test_ablation_impact(ablation_tester: AblationTester, queries: list[dict[str
             # Use the collection-specific query ID if available
             collection_query_id = uuid.UUID(collection_query_ids.get(collection_name, str(base_query_id)))
 
-            logging.info(f"Using collection-specific query ID for baseline test on {collection_name}: {collection_query_id}")
+            logging.info(
+                f"Using collection-specific query ID for baseline test on {collection_name}: {collection_query_id}",
+            )
 
             # Run the test with or without related collections
             baseline_metrics = ablation_tester.test_ablation(
-                collection_query_id, query_text, collection_name, config.query_limit, []
+                collection_query_id, query_text, collection_name, config.query_limit, [],
             )
 
             baseline_results[collection_name] = baseline_metrics
             logging.info(
                 f"Baseline metrics for {collection_name}: Precision={baseline_metrics.precision:.2f}, "
-                f"Recall={baseline_metrics.recall:.2f}, F1={baseline_metrics.f1_score:.2f}"
+                f"Recall={baseline_metrics.recall:.2f}, F1={baseline_metrics.f1_score:.2f}",
             )
 
         # Now perform actual ablation tests for each collection
@@ -644,7 +649,9 @@ def test_ablation_impact(ablation_tester: AblationTester, queries: list[dict[str
                     # Use the collection-specific query ID for the test collection
                     test_collection_query_id = uuid.UUID(collection_query_ids.get(test_collection, str(base_query_id)))
 
-                    logging.info(f"Using collection-specific query ID for ablation test on {test_collection}: {test_collection_query_id}")
+                    logging.info(
+                        f"Using collection-specific query ID for ablation test on {test_collection}: {test_collection_query_id}",
+                    )
 
                     # Measure the actual impact on this collection's queries
                     logging.info(
@@ -653,7 +660,7 @@ def test_ablation_impact(ablation_tester: AblationTester, queries: list[dict[str
 
                     # Run the test with the collection ablated
                     ablated_metrics = ablation_tester.test_ablation(
-                        test_collection_query_id, query_text, test_collection, config.query_limit, []
+                        test_collection_query_id, query_text, test_collection, config.query_limit, [],
                     )
 
                     # Get the baseline for comparison
@@ -1146,12 +1153,16 @@ def main():
                         collection_specific_id = collection_query_ids.get(target_collection, query_id)
 
                         # Use the collection-specific query ID to get truth data
-                        truth_data = ablation_tester.get_truth_data(uuid.UUID(collection_specific_id), target_collection)
+                        truth_data = ablation_tester.get_truth_data(
+                            uuid.UUID(collection_specific_id), target_collection,
+                        )
                         result["truth_data"] = list(truth_data)
                         result["truth_data_count"] = len(truth_data)
                         result["collection_query_id"] = collection_specific_id  # Store for reference
                     except Exception as e:
-                        logger.error(f"Error getting truth data for query {query_id} (collection: {target_collection}): {e}")
+                        logger.error(
+                            f"Error getting truth data for query {query_id} (collection: {target_collection}): {e}",
+                        )
 
         json.dump(serializable_metrics, f, indent=2)
 
