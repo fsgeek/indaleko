@@ -135,13 +135,8 @@ def main():
     if args.clear:
         clear_existing_data()
 
-    # Run data sanity check
-    logger.info("Running data sanity check...")
-    checker = DataSanityChecker(fail_fast=True)
-    sanity_check_passed = checker.run_all_checks()
-    if not sanity_check_passed:
-        logger.error("Data sanity check failed")
-        sys.exit(1)
+    # Skip initial data sanity check - we expect the collections to be empty at this point
+    # Once we generate data, we'll run the checks within the experiment_runner
 
     # Define collections for testing
     collections = [

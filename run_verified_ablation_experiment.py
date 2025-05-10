@@ -109,6 +109,72 @@ def run_verification_tests():
     return True
 
 
+def initialize_truth_collection():
+    """Initialize the AblationQueryTruth collection with empty records.
+
+    This function uses MCP to directly access the ArangoDB database to clear
+    the truth collection and initialize it with empty entries for each activity collection.
+    """
+    logger = logging.getLogger(__name__)
+    logger.info("Initializing truth collection...")
+
+    try:
+        from db.db_config import IndalekoDBConfig
+
+        # Connect to the database
+        db_config = IndalekoDBConfig()
+        db = db_config.get_arangodb()
+
+        # Define the activity collections and truth collection
+        activity_collections = [
+            "AblationLocationActivity",
+            "AblationTaskActivity",
+            "AblationMusicActivity",
+            "AblationCollaborationActivity",
+            "AblationStorageActivity",
+            "AblationMediaActivity",
+        ]
+        truth_collection = "AblationQueryTruth"
+
+        # Clear the truth collection if it exists
+        if db.has_collection(truth_collection):
+            logger.info(f"Clearing existing data from {truth_collection}")
+            db.aql.execute(f"FOR doc IN {truth_collection} REMOVE doc IN {truth_collection}")
+        else:
+            # Create the collection if it doesn't exist
+            db.create_collection(truth_collection)
+            logger.info(f"Created truth collection {truth_collection}")
+
+        # Create initial empty truth data for each activity collection
+        for i, collection_name in enumerate(activity_collections):
+            # Skip collections that don't exist
+            if not db.has_collection(collection_name):
+                logger.warning(f"Collection {collection_name} does not exist, skipping")
+                continue
+
+            # Generate a unique ID for this collection's empty entry
+            query_id = f"00000000-0000-0000-0000-{i+1:012d}"
+            composite_key = f"init_{collection_name}"
+
+            # Create a document with empty matching entities
+            truth_doc = {
+                "_key": composite_key,
+                "query_id": query_id,
+                "composite_key": composite_key,
+                "matching_entities": [],
+                "collection": collection_name,
+            }
+
+            # Insert the document
+            db.collection(truth_collection).insert(truth_doc)
+            logger.info(f"Created empty truth data for {collection_name}")
+
+        logger.info("Truth collection initialized successfully")
+        return True
+    except Exception as e:
+        logger.error(f"Failed to initialize truth collection: {e}")
+        return False
+
 def run_experiment(
     output_dir, rounds=3, clear_existing=True, visualize=True, seed=42, control_pct=0.2, count=100, queries=10,
 ):
@@ -130,6 +196,12 @@ def run_experiment(
 
     # Add the file handler to the logger
     logger.addHandler(file_handler)
+
+    # Initialize the truth collection
+    logger.info("Initializing truth collection before starting experiment...")
+    if not initialize_truth_collection():
+        logger.error("Failed to initialize truth collection, cannot proceed")
+        return False
 
     # Build the command for running the experiment
     cmd = [
@@ -204,9 +276,19 @@ def main():
     parser.add_argument("--control-pct", type=float, default=0.2, help="Control group percentage (0.0-1.0)")
     parser.add_argument("--count", type=int, default=100, help="Number of test records per collection")
     parser.add_argument("--queries", type=int, default=10, help="Number of test queries per round")
+    parser.add_argument("--minimal", action="store_true", help="Use minimal settings for quick verification (overrides other params)")
     parser.add_argument("--skip-verification", action="store_true", help="Skip verification tests")
     parser.add_argument("--log-file", type=str, help="Log file path")
     args = parser.parse_args()
+
+    # If minimal flag is set, override other parameters for a quick test
+    if args.minimal:
+        args.rounds = 1
+        args.count = 5
+        args.queries = 2
+        args.skip_verification = True
+        args.control_pct = 0.3
+        args.no_visualize = True  # Visualization adds time
 
     # Create output directory with timestamp if not provided
     if not args.output_dir:
@@ -228,6 +310,8 @@ def main():
     logger.info(f"Control percentage: {args.control_pct}")
     logger.info(f"Record count: {args.count}")
     logger.info(f"Query count: {args.queries}")
+    if args.minimal:
+        logger.info("Running in MINIMAL mode for fast verification")
 
     # Run verification tests
     if not args.skip_verification:

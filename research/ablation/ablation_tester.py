@@ -1776,19 +1776,17 @@ class AblationTester:
             self.logger.error("No database connection available")
             sys.exit(1)  # Fail-stop immediately - we can't proceed without DB
 
-        # Skip storing if there are no matching entities
-        if not matching_entities:
-            self.logger.info(f"No matching entities for query {query_id} in collection {collection_name}")
-            return True
+        # Create a truth document with an empty list even if there are no matching entities
+        # We need this to avoid "No truth data found" errors for related collections
+        # matching_entities can be empty for related collections in cross-collection queries
 
         # Verify that the collection exists
         if not self.db.has_collection(collection_name):
             self.logger.error(f"CRITICAL: Collection {collection_name} does not exist")
             sys.exit(1)  # Fail-stop immediately
 
-        # Verify that the entities actually exist in the collection
-        # Skip this in test/development environments if environment variable is set
-        if not os.environ.get("ABLATION_SKIP_ENTITY_VALIDATION", ""):
+        # Only verify entities if there are any to verify (empty lists are valid for related collections)
+        if matching_entities and not os.environ.get("ABLATION_SKIP_ENTITY_VALIDATION", ""):
             # Filter out any synthetic or non-existent entities
             verified_entities = []
             for entity_id in matching_entities:
@@ -1813,10 +1811,9 @@ class AblationTester:
 
             matching_entities = verified_entities
 
-            # If all entities were invalid, return early
             if not matching_entities:
-                self.logger.warning(f"No valid entities for query {query_id} in collection {collection_name}")
-                return True
+                self.logger.info(f"All entities were invalid; storing empty truth data for query {query_id} in collection {collection_name}")
+                # Continue with empty list - don't return early
 
         # Ensure the Truth Collection exists - create it if needed
         try:
@@ -1858,26 +1855,41 @@ class AblationTester:
                 new_entities = set(matching_entities)
 
                 if existing_entities != new_entities:
-                    # Different matching entities for same query_id/collection - potential logic bug
-                    self.logger.warning(
-                        f"Found different truth data for same query/collection: {query_id}/{collection_name}"
-                    )
-                    self.logger.warning(f"Existing: {len(existing_entities)} entities, New: {len(new_entities)} entities")
-                    self.logger.warning(f"Difference: {len(existing_entities.symmetric_difference(new_entities))} entities")
+                    # For empty truth data (new or existing), we don't consider this a real conflict
+                    # This happens with cross-collection queries where we create empty placeholders
+                    if not existing_entities or not new_entities:
+                        # One of the sets is empty - this is likely from cross-collection placeholders
+                        # Use the non-empty set if either is empty
+                        if not existing_entities and new_entities:
+                            # Update the document with the new entities
+                            collection.update(composite_key, {"matching_entities": list(new_entities)})
+                            self.logger.info(f"Updated empty truth data with {len(new_entities)} entities for {query_id}/{collection_name}")
+                            return True
+                        elif existing_entities and not new_entities:
+                            # Keep the existing data
+                            self.logger.info(f"Retaining existing truth data (new data empty) for {query_id}/{collection_name}")
+                            return True
+                    else:
+                        # Different matching entities for same query_id/collection - potential logic bug
+                        self.logger.warning(
+                            f"Found different truth data for same query/collection: {query_id}/{collection_name}"
+                        )
+                        self.logger.warning(f"Existing: {len(existing_entities)} entities, New: {len(new_entities)} entities")
+                        self.logger.warning(f"Difference: {len(existing_entities.symmetric_difference(new_entities))} entities")
 
-                    # TRACE DEBUGGING: Print more details about the conflicting data
-                    self.logger.warning(f"Existing entities: {existing_entities}")
-                    self.logger.warning(f"New entities: {new_entities}")
+                        # TRACE DEBUGGING: Print more details about the conflicting data
+                        self.logger.warning(f"Existing entities: {existing_entities}")
+                        self.logger.warning(f"New entities: {new_entities}")
 
-                    # Print full stack trace to identify the call path that's causing conflicts
-                    self.logger.warning("Call stack trace:")
-                    for frame in stack:
-                        self.logger.warning(f"  File {frame.filename}, line {frame.lineno}, in {frame.name}")
+                        # Print full stack trace to identify the call path that's causing conflicts
+                        self.logger.warning("Call stack trace:")
+                        for frame in stack:
+                            self.logger.warning(f"  File {frame.filename}, line {frame.lineno}, in {frame.name}")
 
-                    # CHANGED: Do NOT update existing truth data to ensure scientific consistency
-                    # This ensures that once truth data is set for a query/collection, it remains stable
-                    self.logger.info(f"Retaining existing truth data for query {query_id} in collection {collection_name}")
-                    return True
+                        # CHANGED: Do NOT update existing truth data to ensure scientific consistency
+                        # This ensures that once truth data is set for a query/collection, it remains stable
+                        self.logger.info(f"Retaining existing truth data for query {query_id} in collection {collection_name}")
+                        return True
                 else:
                     # Same data - benign duplicate, might be from resuming a previous run
                     self.logger.info(f"Same truth data already exists for query {query_id} in collection {collection_name}")

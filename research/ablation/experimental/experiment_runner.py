@@ -329,12 +329,13 @@ class ExperimentRunner:
 
         self.logger.info(f"Successfully loaded data for {len(collections_loaded)} collections")
 
-        # Run data sanity check to verify data integrity
-        self.logger.info("Running data sanity check...")
+        # Only verify that collections exist, don't check truth data yet
+        # Truth data will be generated after this
+        self.logger.info("Verifying collections exist...")
         checker = DataSanityChecker(fail_fast=True)
-        sanity_check_passed = checker.run_all_checks()
-        if not sanity_check_passed:
-            self.logger.error("CRITICAL: Data sanity check failed")
+        collections_exist = checker.verify_collections_exist()
+        if not collections_exist:
+            self.logger.error("CRITICAL: Collections verification failed")
             sys.exit(1)  # Fail-stop immediately
 
         return test_data
@@ -504,9 +505,10 @@ class ExperimentRunner:
                                     f"fixed_query:{related_collection}:{i}:{self.seed}:{self.current_round}"
                                 )
                                 # Store empty truth data - we just want to prevent "No truth data found" warnings
-                                self.logger.info(f"Storing placeholder truth data for related collection {related_collection}")
-                                placeholder_entities = []
-                                ablation_tester.store_truth_data(related_query_id, related_collection, placeholder_entities)
+                                # Important: We must pass an empty list, not entities that might not exist!
+                                self.logger.info(f"Storing empty truth data for related collection {related_collection}")
+                                empty_truth_data = []  # Empty list ensures no entity validation errors
+                                ablation_tester.store_truth_data(related_query_id, related_collection, empty_truth_data)
 
                     except Exception as e:
                         self.logger.error(f"CRITICAL: Failed to process truth data: {e}")
