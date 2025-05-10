@@ -67,33 +67,33 @@ Silently substituting template-based data when LLM generation fails would invali
 
 ## Statistical Analysis
 
-- [ ] Implement confidence interval calculations for precision/recall metrics
-- [ ] Add statistical significance testing for ablation impact
-- [ ] Create variance analysis across multiple rounds
-- [ ] Add outlier detection for unusual query results
-- [ ] Generate statistical summary tables in report
-- [ ] Create box plots showing distribution of results across rounds
-- [ ] Implement correlation analysis between collection types and query performance
+- [x] Implement confidence interval calculations for precision/recall metrics
+- [x] Add statistical significance testing for ablation impact
+- [x] Create variance analysis across multiple rounds
+- [x] Add outlier detection for unusual query results
+- [x] Generate statistical summary tables in report
+- [x] Create box plots showing distribution of results across rounds
+- [x] Implement correlation analysis between collection types and query performance
 
 ## Enhanced Reporting
 
-- [ ] Create comprehensive PDF report with all visualizations
-- [ ] Add executive summary section with key findings
-- [ ] Create interactive HTML dashboard option
-- [ ] Add query-level detail reports
-- [ ] Implement comparison view between rounds
-- [ ] Create publication-ready table and figure formats
-- [ ] Add exportable data tables for external analysis
+- [x] Create comprehensive PDF report with all visualizations
+- [x] Add executive summary section with key findings
+- [x] Create interactive HTML dashboard option
+- [x] Add query-level detail reports
+- [x] Implement comparison view between rounds
+- [x] Create publication-ready table and figure formats
+- [x] Add exportable data tables for external analysis
 
 ## Infrastructure Improvements
 
-- [ ] Add checkpointing to allow resuming interrupted tests
-- [ ] Create progress tracker with ETA for long-running tests
-- [ ] Implement parallel testing for independent collection combinations
-- [ ] Add resource monitoring to prevent database overload
-- [ ] Create cleanup utility to remove old test data
-- [ ] Add logging level configuration for detailed diagnostics
-- [ ] Implement test data verification before test runs
+- [x] Add checkpointing to allow resuming interrupted tests
+- [x] Create progress tracker with ETA for long-running tests
+- [x] Implement parallel testing for independent collection combinations
+- [x] Add resource monitoring to prevent database overload
+- [x] Create cleanup utility to remove old test data
+- [x] Add logging level configuration for detailed diagnostics
+- [x] Implement test data verification before test runs
 
 ## Query Generation Enhancements
 
