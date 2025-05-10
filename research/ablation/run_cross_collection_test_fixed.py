@@ -11,6 +11,7 @@ import os
 import sys
 import uuid
 import json
+import random
 from datetime import datetime
 from typing import Dict, List, Any
 
@@ -241,10 +242,7 @@ def main():
     # Set up logging
     logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
     logger = logging.getLogger(__name__)
-    
-    # Import random here to avoid module-level dependency
-    import random
-    
+
     # Set up the database
     db, db_config = setup_database()
     
