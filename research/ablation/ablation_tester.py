@@ -211,8 +211,8 @@ class AblationTester:
             self.logger.error("No database connection available")
             sys.exit(1)  # Fail-stop immediately - we can't proceed without DB
 
-        # Create a composite key based on query_id and collection type
-        composite_key = f"{query_id}_{collection_name.lower().replace('ablation', '').replace('activity', '')}"
+        # Create a composite key based on query_id and full collection name
+        composite_key = f"{query_id}_{collection_name}"
 
         # Try to get the document by its composite key first (most efficient)
         try:
@@ -225,10 +225,11 @@ class AblationTester:
 
         # Fallback: query by filtering if the composite key approach doesn't find a document
         try:
+            # Use the original_query_id for lookups if the composite key approach doesn't work
             result = self.db.aql.execute(
                 f"""
                 FOR doc IN {self.TRUTH_COLLECTION}
-                FILTER doc.query_id == @query_id AND doc.collection == @collection_name
+                FILTER doc.original_query_id == @query_id AND doc.collection == @collection_name
                 LIMIT 1
                 RETURN doc
                 """,
@@ -1677,6 +1678,48 @@ class AblationTester:
             self.logger.error("No database connection available")
             sys.exit(1)  # Fail-stop immediately - we can't proceed without DB
 
+        # Skip storing if there are no matching entities
+        if not matching_entities:
+            self.logger.info(f"No matching entities for query {query_id} in collection {collection_name}")
+            return True
+
+        # Verify that the collection exists
+        if not self.db.has_collection(collection_name):
+            self.logger.error(f"CRITICAL: Collection {collection_name} does not exist")
+            sys.exit(1)  # Fail-stop immediately
+
+        # Verify that the entities actually exist in the collection
+        # Skip this in test/development environments if environment variable is set
+        if not os.environ.get("ABLATION_SKIP_ENTITY_VALIDATION", ""):
+            # Filter out any synthetic or non-existent entities
+            verified_entities = []
+            for entity_id in matching_entities:
+                # Skip synthetic entities (starting with "synthetic_" or "control_synthetic_")
+                if entity_id.startswith(("synthetic_", "control_synthetic_")):
+                    self.logger.warning(f"Skipping synthetic entity {entity_id} for collection {collection_name}")
+                    continue
+
+                # Check if entity exists in collection
+                try:
+                    # Check if entity exists by its key
+                    entity_exists = self.db.collection(collection_name).has(entity_id)
+                    if entity_exists:
+                        verified_entities.append(entity_id)
+                    else:
+                        self.logger.warning(
+                            f"Entity {entity_id} not found in collection {collection_name}, excluding from truth data"
+                        )
+                except Exception as e:
+                    self.logger.warning(f"Error checking entity {entity_id}: {e}, excluding from truth data")
+                    continue
+
+            matching_entities = verified_entities
+
+            # If all entities were invalid, return early
+            if not matching_entities:
+                self.logger.warning(f"No valid entities for query {query_id} in collection {collection_name}")
+                return True
+
         # Ensure the Truth Collection exists - create it if needed
         try:
             if not self.db.has_collection(self.TRUTH_COLLECTION):
@@ -1686,14 +1729,17 @@ class AblationTester:
             self.logger.error(f"CRITICAL: Failed to ensure truth collection exists: {e}")
             sys.exit(1)  # Fail-stop immediately
 
-        # Create a composite key based on query ID and collection
-        collection_type = collection_name.lower().replace("ablation", "").replace("activity", "")
-        composite_key = f"{query_id}_{collection_type}"
+        # Create a composite key based on query ID and full collection name to ensure uniqueness
+        # This ensures different collections can have different truth data for the same query
+        composite_key = f"{query_id}_{collection_name}"
 
         # Create the truth document
+        # Use composite key for both the document key and the query_id to ensure uniqueness
+        # This prevents conflicts when the same query_id is used with different collections
         truth_doc = {
             "_key": composite_key,
-            "query_id": str(query_id),
+            "query_id": composite_key,  # Use composite key instead of just query_id
+            "original_query_id": str(query_id),  # Keep original for reference
             "matching_entities": matching_entities,
             "collection": collection_name,
         }
