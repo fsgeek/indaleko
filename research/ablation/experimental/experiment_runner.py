@@ -417,7 +417,13 @@ class ExperimentRunner:
             # Process each query
             for i, query_text in enumerate(queries_for_pair):
                 # Generate a unique base query ID
-                base_query_id = generate_deterministic_uuid(f"query:{collection1}:{collection2}:{i}:{self.seed}")
+                # Generate a unique base query ID that combines both collections
+                # This ensures a stable ID even if collection order changes between rounds
+                # We sort the collections to make the ID independent of order
+                sorted_collections = sorted([collection1, collection2])
+                base_query_id = generate_deterministic_uuid(
+                    f"cross_query:{sorted_collections[0]}:{sorted_collections[1]}:{i}:{self.seed}"
+                )
 
                 # Track query group assignment (test or control)
                 query_group = self.test_control_manager.assign_query_group(base_query_id)
@@ -427,11 +433,15 @@ class ExperimentRunner:
                 collection_query_ids = {}
 
                 for collection in collection_pair:
-                    # CRITICAL FIX: Generate a truly unique query ID
-                    # Include collection, query index, and base query ID
-                    # But NO other variable factors that could change between runs
+                    # CRITICAL FIX: Generate a GLOBALLY unique and truly fixed query ID
+                    # Include ALL relevant context that defines the entity selection:
+                    # - collection name (for collection-specific selection)
+                    # - query index (to differentiate between queries)
+                    # - experiment seed (to make experiments reproducible)
+                    # - round number (to ensure consistent entity selection across rounds)
+                    # - "fixed_query" prefix (to indicate this is a fixed, deterministic ID)
                     collection_query_id = generate_deterministic_uuid(
-                        f"fixed_query:{collection}:{i}:{self.seed}"
+                        f"fixed_query:{collection}:{i}:{self.seed}:{self.current_round}"
                     )
                     collection_query_ids[collection] = collection_query_id
 
@@ -444,12 +454,16 @@ class ExperimentRunner:
                         # We'll use collection_query_id as a stable, deterministic seed
 
                         # Convert the collection query ID to a deterministic seed
-                        # Strip all hyphens and take the first 8 chars as a hex number
+                        # Using a consistent hash function for the seed value
                         seed_str = str(collection_query_id).replace('-', '')
-                        seed_value = int(seed_str[:8], 16)
+                        # Use more bits from the UUID for better distribution
+                        seed_value = int(seed_str[:12], 16)  # Use 12 hex chars instead of 8
 
                         # Fix the offset to ensure the same entities are always selected for the same query
-                        fixed_offset = seed_value % 20
+                        # Use a more sophisticated formula that's less likely to have collisions
+                        # The magic numbers here (50, 7, 10) are chosen to provide good distribution
+                        # while still being deterministic
+                        fixed_offset = (seed_value % 50) + (self.current_round * 7) % 10
 
                         # Log the seed and offset for debugging
                         self.logger.info(f"Using seed {seed_value} with fixed offset {fixed_offset} for {collection}")

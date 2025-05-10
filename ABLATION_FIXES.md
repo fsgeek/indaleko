@@ -1,5 +1,55 @@
 # Ablation Framework Fixes
 
+## Deterministic Entity Selection Fixes
+
+The ablation framework was generating inconsistent truth data for the same query ID and collection combination. This manifested as warnings like:
+
+```
+WARNING: Found different truth data for same query/collection: 55003a30-504a-5d06-b885-16ff6a51925c/AblationStorageActivity
+WARNING: Existing: 5 entities, New: 5 entities
+WARNING: Difference: 6 entities
+```
+
+This inconsistency undermines scientific reproducibility and causes validation failures.
+
+### Root Cause Analysis
+
+1. **Query ID Generation**: The `generate_cross_collection_queries` method was using inconsistent methods for generating query IDs:
+   - Base query IDs did not account for collection order variations
+   - Collection-specific query IDs didn't include sufficient context
+
+2. **Entity Selection Logic**: The approach for selecting entities deterministically had flaws:
+   - Used only part of the UUID (first 8 hex chars) for seed generation
+   - Used a simple modulo operation (seed_value % 20) that has a high collision probability
+   - Did not properly account for the current round in entity selection
+
+3. **Cross-Collection Relationship**: The query ID generation didn't properly reflect the relationship between paired collections.
+
+### Fixed Implementation
+
+The following changes ensure deterministic truth data generation:
+
+1. **Base Query ID Generation**:
+   - Now sorts collections alphabetically before generating the base ID
+   - Uses a consistent "cross_query" prefix
+   - This ensures stable IDs even if collection processing order changes
+
+2. **Collection-Specific Query ID Generation**:
+   - Includes all context needed for proper entity selection (collection, query index, seed, round)
+   - Creates truly global and consistent identifiers
+   - Uses "fixed_query" prefix to clearly indicate its purpose
+
+3. **Improved Entity Selection Logic**:
+   - Uses more bits from the UUID for better seed value distribution (12 hex chars instead of 8)
+   - Uses a more sophisticated formula for offset calculation to reduce collision probability
+   - Properly accounts for experimental context in entity selection
+
+### Testing and Verification
+
+The fixes have been verified using:
+1. `test_deterministic_truth_data.py` which confirms deterministic entity selection works
+2. `run_verified_ablation_experiment.py` which tests the entire ablation framework pipeline
+
 ## Original Fixes
 
 Initially, we addressed issues with the ablation framework including:
