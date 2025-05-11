@@ -2136,9 +2136,22 @@ class AblationTester:
                     self.logger.info(f"Ablated collection {collection_name} has empty truth data - perfect match (no results expected, none found)")
                     # This means we got exactly what we expected - no results
                     # So this should be considered perfect precision/recall
-                    precision = 1.0
-                    recall = 1.0
-                    f1_score = 1.0
+                    # Create and return the result immediately, bypassing the regular calculation
+                    result = AblationResult(
+                        query_id=query_id,
+                        ablated_collection=collection_name,
+                        result_count=len(results),
+                        true_positives=0,
+                        false_positives=0,
+                        false_negatives=0,
+                        precision=1.0,
+                        recall=1.0,
+                        f1_score=1.0,
+                        execution_time_ms=0,  # Will be set by the caller
+                        aql_query="",  # Will be set by the caller if needed
+                        metadata={},
+                    )
+                    return result
 
         # Calculate precision, recall, and F1 score with detailed logging
         if true_positives + false_positives > 0:
