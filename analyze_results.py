@@ -138,10 +138,13 @@ def analyze_impact_metrics(metrics_file, output_dir=None):
     # Load the metrics file
     try:
         with open(metrics_file, 'r') as f:
-            impact_metrics = json.load(f)
+            impact_data = json.load(f)
     except Exception as e:
         logger.error(f"Failed to load metrics file: {e}")
         return None
+
+    # Extract the impact metrics
+    impact_metrics = impact_data.copy()
 
     # Extract all precision, recall, and F1 values
     precision_values = []
@@ -527,22 +530,96 @@ def analyze_impact_metrics(metrics_file, output_dir=None):
             f.write('![Recall Ablation Comparison](recall_ablation_comparison.png)\n\n')
             f.write('![F1 Ablation Comparison](f1_ablation_comparison.png)\n\n')
 
+        # Run validation checks
+        logger.info("Running validation checks on metrics...")
+        validation_results = validate_ablation_results(impact_data)
+
+        if validation_results:
+            f.write('## Validation Issues Detected\n\n')
+            f.write(f'**⚠️ {len(validation_results)} potential issues were identified in the ablation results**\n\n')
+
+            # Group by severity
+            critical_issues = [issue for issue in validation_results if issue[2] == "critical"]
+            warning_issues = [issue for issue in validation_results if issue[2] == "warning"]
+
+            f.write(f'- Critical issues: {len(critical_issues)}\n')
+            f.write(f'- Warning issues: {len(warning_issues)}\n\n')
+
+            # Table of issues
+            f.write('### Issue Summary\n\n')
+            f.write('| Query ID | Issue | Severity |\n')
+            f.write('|----------|-------|----------|\n')
+
+            for query_id, issue, severity, _ in validation_results:
+                # Truncate very long query IDs for table formatting
+                display_id = query_id if len(query_id) < 40 else query_id[:37] + "..."
+                f.write(f'| {display_id} | {issue} | {severity} |\n')
+
+            f.write('\n')
+
+            # Show detailed critical issues with queries
+            if critical_issues:
+                f.write('### Critical Issues Details\n\n')
+                for i, (query_id, issue, severity, aql) in enumerate(critical_issues, 1):
+                    f.write(f'#### Critical Issue {i}: {issue}\n\n')
+                    f.write(f'**Query ID:** {query_id}\n\n')
+                    f.write('**AQL Query:**\n')
+                    f.write('```aql\n')
+                    f.write(aql)
+                    f.write('\n```\n\n')
+
+            f.write('### Impact on Experiment Validity\n\n')
+
+            critical_pct = (len(critical_issues) / len(validation_results)) * 100 if validation_results else 0
+
+            if critical_pct > 20:
+                f.write('⚠️ **HIGH RISK**: A significant percentage of results contain critical validation issues. ')
+                f.write('The experiment results may not be scientifically valid without addressing these issues.\n\n')
+            elif critical_issues:
+                f.write('⚠️ **MODERATE RISK**: Some critical validation issues were detected. ')
+                f.write('These should be addressed before drawing final conclusions from the experiment results.\n\n')
+            elif warning_issues:
+                f.write('⚠️ **LOW RISK**: Only warning-level validation issues were detected. ')
+                f.write('The experiment results are likely valid, but these issues should be reviewed to ensure full integrity.\n\n')
+        else:
+            f.write('## Validation Results\n\n')
+            f.write('✅ **No validation issues detected.** The ablation results appear to be free from common data integrity problems.\n\n')
+
         # Recommendations
         f.write('## Recommendations\n\n')
 
-        if has_binary_issue:
-            f.write('Based on the analysis, the following recommendations are made:\n\n')
-            f.write('1. **Further investigate the query construction**: Ensure that ablated collections are still queried with appropriate filters\n')
-            f.write('2. **Check truth data management**: Verify that truth data is being properly stored and retrieved\n')
-            f.write('3. **Examine metrics calculation**: Review the calculation of precision and recall to ensure proper handling of edge cases\n')
-            f.write('4. **Implement diagnostic logging**: Add more detailed logging of precision/recall calculation to identify issues\n')
-            f.write('5. **Test with simpler cases first**: Create simplified test cases with known expected results to validate the metrics calculation\n')
+        if validation_results:
+            f.write('Based on the analysis and validation results, the following recommendations are made:\n\n')
+
+            if critical_issues:
+                f.write('### Critical Issues to Address\n\n')
+                f.write('1. **Fix precision/recall calculation**: Address cases where precision=1.0 with no true positives\n')
+                f.write('2. **Investigate identical queries**: Fix cases where ablated and non-ablated queries are identical\n')
+                f.write('3. **Address metrics consistency issues**: Ensure metrics calculations follow expected formulas\n')
+                f.write('4. **Review ablation implementation**: Verify that collections are properly ablated during testing\n')
+                f.write('5. **Check truth data handling**: Ensure truth data is properly managed for all collections\n\n')
+
+            if has_binary_issue:
+                f.write('### Binary Metrics Issues\n\n')
+                f.write('1. **Further investigate the query construction**: Ensure that ablated collections are still queried with appropriate filters\n')
+                f.write('2. **Check truth data management**: Verify that truth data is being properly stored and retrieved\n')
+                f.write('3. **Examine metrics calculation**: Review the calculation of precision and recall to ensure proper handling of edge cases\n')
+                f.write('4. **Implement diagnostic logging**: Add more detailed logging of precision/recall calculation to identify issues\n')
+                f.write('5. **Test with simpler cases first**: Create simplified test cases with known expected results to validate the metrics calculation\n')
         else:
-            f.write('Based on the analysis, the following next steps are recommended:\n\n')
-            f.write('1. **Run comprehensive ablation tests**: The framework appears to be functioning correctly; proceed with full ablation studies\n')
-            f.write('2. **Monitor for any regression**: Continue to check that precision/recall values remain well-distributed\n')
-            f.write('3. **Validate against known test cases**: Create test cases with known expected results to further validate the framework\n')
-            f.write('4. **Document the fixes**: Update documentation to explain the changes made to fix the binary precision/recall issue\n')
+            if has_binary_issue:
+                f.write('Based on the analysis, the following recommendations are made:\n\n')
+                f.write('1. **Further investigate the query construction**: Ensure that ablated collections are still queried with appropriate filters\n')
+                f.write('2. **Check truth data management**: Verify that truth data is being properly stored and retrieved\n')
+                f.write('3. **Examine metrics calculation**: Review the calculation of precision and recall to ensure proper handling of edge cases\n')
+                f.write('4. **Implement diagnostic logging**: Add more detailed logging of precision/recall calculation to identify issues\n')
+                f.write('5. **Test with simpler cases first**: Create simplified test cases with known expected results to validate the metrics calculation\n')
+            else:
+                f.write('Based on the analysis, the following next steps are recommended:\n\n')
+                f.write('1. **Run comprehensive ablation tests**: The framework appears to be functioning correctly; proceed with full ablation studies\n')
+                f.write('2. **Monitor for any regression**: Continue to check that precision/recall values remain well-distributed\n')
+                f.write('3. **Validate against known test cases**: Create test cases with known expected results to further validate the framework\n')
+                f.write('4. **Document the fixes**: Update documentation to explain the changes made to fix the binary precision/recall issue\n')
 
     logger.info(f"Analysis report saved to {report_path}")
     return analysis
@@ -555,6 +632,156 @@ def percentage_binary(values):
 
     binary_count = sum(1 for v in values if v == 0.0 or v == 1.0)
     return (binary_count / len(values)) * 100.0
+
+
+def validate_ablation_results(results):
+    """Validate ablation results for suspicious or invalid metrics.
+
+    This function identifies potentially problematic patterns in the ablation results, such as:
+    - Precision = 1.0 with no true positives (suggests empty truth set or result fabrication)
+    - F1 = 0.0 despite having false negatives > 0 (inconsistent metrics)
+    - Perfect metrics with no matching activity (suggests invalid evaluation)
+    - Identical AQL queries between ablated and non-ablated runs (suggests query not actually modified)
+
+    Args:
+        results: Dictionary containing the impact_metrics structure
+
+    Returns:
+        list: List of tuples (query_id, issue_description, severity, aql_query) for flagged cases
+    """
+    flagged_cases = []
+
+    if not results or not isinstance(results, dict):
+        return flagged_cases
+
+    # Handle different possible structures of results
+    impact_metrics = None
+    if "impact_metrics" in results:
+        impact_metrics = results["impact_metrics"]
+    elif results.get("results", {}).get("impact_metrics"):
+        impact_metrics = results["results"]["impact_metrics"]
+    else:
+        # Try to detect if results itself is the impact_metrics object
+        # This handles the case where the function is called directly with impact_metrics
+        has_queries = any(isinstance(v, dict) and "results" in v for k, v in results.items())
+        if has_queries:
+            impact_metrics = results
+
+    if not impact_metrics:
+        return flagged_cases
+
+    # Track AQL queries by collection for comparison
+    collection_queries = {}
+
+    for outer_key, inner_data in impact_metrics.items():
+        results_data = inner_data.get("results", inner_data)
+        for inner_key, entry in results_data.items():
+            if not isinstance(entry, dict):
+                continue
+
+            for direction, metrics in entry.items():
+                if not isinstance(metrics, dict):
+                    continue
+
+                # Extract metric values
+                precision = metrics.get("precision", None)
+                recall = metrics.get("recall", None)
+                f1 = metrics.get("f1_score", None)
+                tp = metrics.get("true_positives", 0)
+                fp = metrics.get("false_positives", 0)
+                fn = metrics.get("false_negatives", 0)
+                result_count = metrics.get("result_count", 0)
+                truth_count = metrics.get("truth_data_count", 0)
+                aql = metrics.get("aql_query", "").strip()
+                query_id = metrics.get("query_id", "unknown")
+
+                # Extract collection information
+                collection = None
+                ablated = False
+                metadata = metrics.get("metadata", {})
+                if metadata:
+                    collection = metadata.get("collection", None)
+                    ablated = "ablated_collection" in metadata
+
+                # Store query for comparison if we have collection info
+                if collection:
+                    if collection not in collection_queries:
+                        collection_queries[collection] = {}
+
+                    # Store by ablation status to compare later
+                    ablation_key = "ablated" if ablated else "normal"
+                    if query_id not in collection_queries[collection]:
+                        collection_queries[collection][query_id] = {}
+
+                    collection_queries[collection][query_id][ablation_key] = aql
+
+                # Condition 1: precision == 1.0 but no true positives
+                # This typically means the truth set was empty or the result was fabricated
+                if precision == 1.0 and tp == 0:
+                    flagged_cases.append((
+                        query_id,
+                        f"Precision = 1.0 but true positives = 0 (truth count: {truth_count})",
+                        "critical",
+                        aql
+                    ))
+
+                # Condition 2: f1 == 0.0 but false negatives > 0
+                # This suggests inconsistency in metrics calculation
+                if f1 == 0.0 and fn > 0:
+                    flagged_cases.append((
+                        query_id,
+                        f"F1 = 0.0 despite having {fn} false negatives",
+                        "warning",
+                        aql
+                    ))
+
+                # Condition 3: result count == 0 but claims full precision/recall
+                # This suggests the metrics are not being calculated correctly
+                if precision == 1.0 and recall == 1.0 and tp == 0 and fp == 0 and fn == 0:
+                    flagged_cases.append((
+                        query_id,
+                        "Perfect metrics (P=1.0, R=1.0) with no matching activity",
+                        "critical",
+                        aql
+                    ))
+
+                # Condition 4: Consistency check - result count should equal true positives + false positives
+                if result_count != tp + fp:
+                    flagged_cases.append((
+                        query_id,
+                        f"Inconsistent metrics: result_count ({result_count}) != TP ({tp}) + FP ({fp})",
+                        "warning",
+                        aql
+                    ))
+
+    # Debug the collection_queries structure
+    logger.debug(f"Collection queries structure: {collection_queries}")
+
+    # Compare queries between ablated and non-ablated runs
+    for collection, queries in collection_queries.items():
+        for query_id, query_variations in queries.items():
+            logger.debug(f"Query variations for {query_id} in {collection}: {query_variations}")
+            if "ablated" in query_variations and "normal" in query_variations:
+                ablated_query = query_variations["ablated"]
+                normal_query = query_variations["normal"]
+
+                # Skip empty queries or comments
+                if not ablated_query or ablated_query.startswith("//") or not normal_query:
+                    continue
+
+                # Compare queries (ignoring comments and whitespace)
+                clean_ablated = "\n".join([line for line in ablated_query.split("\n") if not line.strip().startswith("//")])
+                clean_normal = "\n".join([line for line in normal_query.split("\n") if not line.strip().startswith("//")])
+
+                if clean_ablated.strip() == clean_normal.strip():
+                    flagged_cases.append((
+                        query_id,
+                        f"Identical queries for ablated and non-ablated runs of {collection}",
+                        "critical",
+                        f"ABLATED:\n{ablated_query}\n\nNORMAL:\n{normal_query}"
+                    ))
+
+    return flagged_cases
 
 
 def analyze_results_directory(results_dir):
