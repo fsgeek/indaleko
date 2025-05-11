@@ -46,39 +46,39 @@ class RoundManager:
             seed: Random seed for reproducible experimental design
         """
         self.logger = logging.getLogger(__name__)
-        
+
         if not collections:
             self.logger.error("CRITICAL: No collections provided")
             sys.exit(1)  # Fail-stop immediately
-            
+
         if rounds < 1:
             self.logger.error(f"CRITICAL: Invalid number of rounds: {rounds}")
             sys.exit(1)  # Fail-stop immediately
-            
+
         self.collections = collections
         self.base_output_dir = base_output_dir
         self.rounds = rounds
         self.control_percentage = control_percentage
         self.seed = seed
-        
+
         # Initialize random generators
         np.random.seed(seed)
-        
+
         # Current round state
         self.current_round = 0
         self.round_results = {}
         self.round_output_dirs = {}
-        
+
         # Initialize test/control manager
         self.group_manager = TestControlGroupManager(
             collections=collections,
             control_percentage=control_percentage,
             seed=seed,
         )
-        
+
         # Make sure base output directory exists
         os.makedirs(base_output_dir, exist_ok=True)
-        
+
         self.logger.info(f"Initialized RoundManager with {len(collections)} collections")
         self.logger.info(f"Planning {rounds} experimental rounds")
         self.logger.info(f"Base output directory: {base_output_dir}")
@@ -95,20 +95,20 @@ class RoundManager:
         # If round number not specified, use next round
         if round_number is None:
             round_number = self.current_round + 1
-            
+
         # Validate round number
         if round_number < 1 or round_number > self.rounds:
             self.logger.error(f"CRITICAL: Invalid round number: {round_number}")
             sys.exit(1)  # Fail-stop immediately
-            
+
         # Update current round
         self.current_round = round_number
-        
+
         # Create round-specific output directory
         round_dir = os.path.join(self.base_output_dir, f"round_{round_number}")
         os.makedirs(round_dir, exist_ok=True)
         self.round_output_dirs[round_number] = round_dir
-        
+
         # First round: Initialize test/control group assignments
         if round_number == 1:
             control_count = max(1, int(len(self.collections) * self.control_percentage))
@@ -122,11 +122,11 @@ class RoundManager:
             test_collections, control_collections = self.group_manager.rotate_collections(
                 collections_to_rotate=rotations
             )
-            
+
         self.logger.info(f"=== Starting Round {round_number}/{self.rounds} ===")
         self.logger.info(f"Test collections: {', '.join(test_collections)}")
         self.logger.info(f"Control collections: {', '.join(control_collections)}")
-        
+
         return test_collections, control_collections
 
     def get_round_output_dir(self) -> str:
@@ -138,7 +138,7 @@ class RoundManager:
         if self.current_round not in self.round_output_dirs:
             self.logger.error(f"CRITICAL: No output directory for round {self.current_round}")
             sys.exit(1)  # Fail-stop immediately
-            
+
         return self.round_output_dirs[self.current_round]
 
     def store_round_results(self, results: Dict) -> None:
@@ -150,7 +150,7 @@ class RoundManager:
         if not self.current_round:
             self.logger.error("CRITICAL: Cannot store results - no active round")
             sys.exit(1)  # Fail-stop immediately
-            
+
         # Add metadata
         results_with_metadata = {
             "round": self.current_round,
@@ -159,38 +159,64 @@ class RoundManager:
             "control_collections": self.group_manager.get_control_collections(),
             "results": results,
         }
-        
+
         # Store in memory
         self.round_results[self.current_round] = results_with_metadata
-        
-        # Save to disk
-        output_file = os.path.join(
+
+        # Save to disk in both formats
+        base_output_path = os.path.join(
             self.round_output_dirs[self.current_round],
-            "round_results.json"
+            "round_results"
         )
-        
-        with open(output_file, "w") as f:
+
+        # Save as JSON with formatting
+        json_output_file = f"{base_output_path}.json"
+        with open(json_output_file, "w") as f:
             json.dump(
                 results_with_metadata,
                 f,
                 indent=2,
                 default=lambda o: str(o) if isinstance(o, (uuid.UUID, set)) else o,
             )
-            
-        self.logger.info(f"Saved round {self.current_round} results to {output_file}")
+
+        # Save as JSONL (one JSON object per line) for better handling of large results
+        jsonl_output_file = f"{base_output_path}.jsonl"
+
+        # If 'results' is a list in the metadata, convert each item to a separate line
+        if "results" in results_with_metadata and isinstance(results_with_metadata["results"], list):
+            with open(jsonl_output_file, "w") as f:
+                for item in results_with_metadata["results"]:
+                    # Add experiment metadata to each item to maintain context
+                    item_with_metadata = {
+                        "round": self.current_round,
+                        "timestamp": results_with_metadata["timestamp"],
+                        "test_collections": results_with_metadata["test_collections"],
+                        "control_collections": results_with_metadata["control_collections"],
+                        **item
+                    }
+                    f.write(json.dumps(item_with_metadata,
+                                      default=lambda o: str(o) if isinstance(o, (uuid.UUID, set)) else o) + "\n")
+        else:
+            # If it's not a list of results, just write the whole thing as a single line
+            with open(jsonl_output_file, "w") as f:
+                f.write(json.dumps(results_with_metadata,
+                                  default=lambda o: str(o) if isinstance(o, (uuid.UUID, set)) else o))
+
+        self.logger.info(f"Saved round {self.current_round} results to {json_output_file}")
+        self.logger.info(f"Saved round {self.current_round} results in JSONL format to {jsonl_output_file}")
 
     def finish_round(self) -> None:
         """Finish the current round and prepare for the next one."""
         if not self.current_round:
             self.logger.error("CRITICAL: No active round to finish")
             sys.exit(1)  # Fail-stop immediately
-            
+
         if self.current_round not in self.round_results:
             self.logger.error(f"CRITICAL: No results for round {self.current_round}")
             sys.exit(1)  # Fail-stop immediately
-            
+
         self.logger.info(f"=== Finished Round {self.current_round}/{self.rounds} ===")
-        
+
         # Generate round-specific reports
         self._generate_round_report(self.current_round)
 
@@ -203,31 +229,31 @@ class RoundManager:
         if round_number not in self.round_results:
             self.logger.error(f"CRITICAL: No results for round {round_number}")
             sys.exit(1)  # Fail-stop immediately
-            
+
         # Get round data
         round_data = self.round_results[round_number]
         output_dir = self.round_output_dirs[round_number]
-        
+
         # Create markdown report
         report_path = os.path.join(output_dir, f"round_{round_number}_report.md")
-        
+
         with open(report_path, "w") as f:
             f.write(f"# Ablation Study - Round {round_number} Report\n\n")
             f.write(f"Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n")
-            
+
             f.write("## Experimental Design\n\n")
             f.write(f"- Test collections: {', '.join(round_data['test_collections'])}\n")
             f.write(f"- Control collections: {', '.join(round_data['control_collections'])}\n\n")
-            
+
             # Add experiment-specific details from the results
             if "queries_tested" in round_data["results"]:
                 f.write(f"- Queries tested: {round_data['results']['queries_tested']}\n")
             if "ablations_performed" in round_data["results"]:
                 f.write(f"- Ablations performed: {round_data['results']['ablations_performed']}\n\n")
-            
+
             f.write("## Summary Results\n\n")
             # Add round-specific summary information here
-            
+
         self.logger.info(f"Generated report for round {round_number}: {report_path}")
 
     def is_experiment_complete(self) -> bool:
@@ -246,36 +272,36 @@ class RoundManager:
         """
         if not self.is_experiment_complete():
             self.logger.warning("Generating cross-round report before experiment completion")
-            
+
         # Create a report that compares results across rounds
         report_path = os.path.join(self.base_output_dir, "cross_round_analysis.md")
-        
+
         with open(report_path, "w") as f:
             f.write("# Cross-Round Ablation Analysis\n\n")
             f.write(f"Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n")
-            
+
             f.write("## Experimental Design\n\n")
             f.write(f"- Total rounds: {self.rounds}\n")
             f.write(f"- Collections tested: {', '.join(self.collections)}\n")
             f.write(f"- Control percentage: {self.control_percentage * 100:.1f}%\n\n")
-            
+
             f.write("## Round Summary\n\n")
             f.write("| Round | Test Collections | Control Collections |\n")
             f.write("|-------|-----------------|---------------------|\n")
-            
+
             for r in range(1, self.rounds + 1):
                 if r in self.round_results:
                     test_cols = ', '.join(self.round_results[r]['test_collections'])
                     control_cols = ', '.join(self.round_results[r]['control_collections'])
                     f.write(f"| {r} | {test_cols} | {control_cols} |\n")
-                    
+
             f.write("\n## Statistical Analysis\n\n")
             # Add cross-round statistical analysis here
-            
+
             f.write("\n## Consistency Analysis\n\n")
             f.write("Analysis of result consistency across rounds:\n\n")
             # Add consistency analysis here
-            
+
         self.logger.info(f"Generated cross-round analysis report: {report_path}")
         return report_path
 
@@ -291,7 +317,7 @@ class RoundManager:
             "rounds_completed": len(self.round_results),
             "total_rounds": self.rounds,
         }
-        
+
     def calculate_cross_round_variance(self) -> Dict:
         """Calculate variance metrics across rounds for reliability assessment.
 

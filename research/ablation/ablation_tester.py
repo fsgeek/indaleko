@@ -225,15 +225,86 @@ class AblationTester:
         Returns:
             Set[str]: The set of entity IDs that should match the query in this collection.
         """
+        # CRITICAL FIX: Enhanced logging for debugging
+        self.logger.info(f"Looking up collection truth data for query {query_id} in collection {collection_name}")
+
         # Get the unified truth data
         unified_truth = self.get_unified_truth_data(query_id)
+
         if unified_truth is not None and collection_name in unified_truth:
+            truth_count = len(unified_truth[collection_name])
+            self.logger.info(f"Found {truth_count} truth entities for {collection_name} in unified truth data for query {query_id}")
+
+            # Return as a set for efficient intersection/difference operations
             return set(unified_truth[collection_name])
         elif unified_truth is not None:
-            self.logger.warning(f"No truth data for collection {collection_name} in unified truth data for query {query_id}")
+            # Log all collections that ARE in the unified truth data for better debugging
+            available_collections = list(unified_truth.keys())
+            if available_collections:
+                self.logger.warning(
+                    f"No truth data for collection {collection_name} in unified truth data for query {query_id}. "
+                    f"Available collections: {available_collections}"
+                )
+            else:
+                self.logger.warning(
+                    f"Unified truth data exists for query {query_id} but contains no collections"
+                )
             return set()
         else:
-            self.logger.warning(f"No unified truth data found for query {query_id}")
+            # CRITICAL FIX: Try alternate approaches to find truth data
+            self.logger.warning(f"No unified truth data found for query {query_id}, trying alternative approaches")
+
+            # Try searching by query ID as a string
+            try:
+                query_str = str(query_id)
+
+                # Run query to find truth data with query_id field
+                aql_query = f"""
+                FOR doc IN {self.TRUTH_COLLECTION}
+                FILTER doc.query_id == @query_id
+                RETURN doc
+                """
+                cursor = self.db.aql.execute(aql_query, bind_vars={"query_id": query_str})
+                results = list(cursor)
+
+                if results:
+                    doc = results[0]
+                    self.logger.info(f"Found truth data using query search instead of direct get")
+
+                    matching_entities = doc.get("matching_entities", {})
+                    if collection_name in matching_entities:
+                        self.logger.info(
+                            f"Found {len(matching_entities[collection_name])} truth entities for {collection_name} "
+                            f"using alternative query approach"
+                        )
+                        return set(matching_entities[collection_name])
+                    else:
+                        self.logger.warning(
+                            f"Collection {collection_name} not found in alternative truth data approach. "
+                            f"Available collections: {list(matching_entities.keys())}"
+                        )
+                else:
+                    # One last try - check if hexadecimal format was used (common UUID format issue)
+                    hex_id = query_str.replace('-', '')
+
+                    # Log what we're trying
+                    self.logger.info(f"Trying to find truth data with UUID in hex format: {hex_id}")
+
+                    # Try direct document lookup with hex format
+                    hex_doc = self.db.collection(self.TRUTH_COLLECTION).get(hex_id)
+                    if hex_doc and "matching_entities" in hex_doc:
+                        matching_entities = hex_doc.get("matching_entities", {})
+                        if collection_name in matching_entities:
+                            self.logger.info(
+                                f"Found {len(matching_entities[collection_name])} truth entities using hex UUID format"
+                            )
+                            return set(matching_entities[collection_name])
+
+            except Exception as e:
+                self.logger.warning(f"Error during alternative truth data lookup: {e}")
+
+            # If all approaches failed, return empty set but log warning
+            self.logger.warning(f"No truth data found for query {query_id} in collection {collection_name} after all attempts")
             return set()
 
 
@@ -1766,6 +1837,15 @@ class AblationTester:
             self.logger.error("No database connection available")
             sys.exit(1)  # Fail-stop immediately - we can't proceed without DB
 
+        # CRITICAL FIX: Enhanced logging for debugging truth data storage
+        self.logger.info(f"Storing unified truth data for query ID: {query_id}")
+        self.logger.info(f"Collections with truth data: {list(unified_matching_entities.keys())}")
+        for collection, entities in unified_matching_entities.items():
+            self.logger.info(f"Collection {collection} has {len(entities)} entities")
+            if len(entities) > 0:
+                sample = entities[:3] if len(entities) > 3 else entities
+                self.logger.info(f"Sample entities: {sample}")
+
         # Verify entities if there are any to verify
         if not os.environ.get("ABLATION_SKIP_ENTITY_VALIDATION", ""):
             verified_entities = {}
@@ -1784,13 +1864,17 @@ class AblationTester:
                         continue
 
                     # Check if entity exists by its key
-                    entity_exists = self.db.collection(collection_name).has(entity_id)
-                    if entity_exists:
-                        collection_verified.append(entity_id)
-                    else:
-                        self.logger.warning(
-                            f"Entity {entity_id} not found in collection {collection_name}, excluding from truth data"
-                        )
+                    try:
+                        entity_exists = self.db.collection(collection_name).has(entity_id)
+                        if entity_exists:
+                            collection_verified.append(entity_id)
+                        else:
+                            self.logger.warning(
+                                f"Entity {entity_id} not found in collection {collection_name}, excluding from truth data"
+                            )
+                    except Exception as e:
+                        self.logger.error(f"Error checking entity {entity_id} in {collection_name}: {e}")
+                        # Skip this entity but continue validating others rather than failing completely
 
                 # Store verified entities for this collection
                 verified_entities[collection_name] = collection_verified
@@ -1802,15 +1886,26 @@ class AblationTester:
             # Replace with verified entities
             unified_matching_entities = verified_entities
 
+        # If after verification we have no entities in any collections, log a warning
+        total_entities = sum(len(entities) for entities in unified_matching_entities.values())
+        if total_entities == 0:
+            self.logger.warning(
+                f"No valid entities found in any collection for query {query_id}. This may cause issues during evaluation."
+            )
+            # Continue anyway - it's valid to have a query with no expected matches
+
         # Ensure the Truth Collection exists - create it if needed
         if not self.db.has_collection(self.TRUTH_COLLECTION):
             self.db.create_collection(self.TRUTH_COLLECTION)
             self.logger.info(f"Created truth data collection {self.TRUTH_COLLECTION}")
 
-        # Create the truth document - using query_id directly as the key
+        # CRITICAL FIX: Ensure we have both UUID and string representations stored
+        # This helps with lookup issues where the ID format might vary
+        str_query_id = str(query_id)
         truth_doc = {
-            "_key": str(query_id),
-            "query_id": str(query_id),
+            "_key": str_query_id,  # Use string representation as key
+            "query_id": str_query_id,  # Redundant but helps with querying
+            "query_uuid": str_query_id,  # Explicit field for string UUID
             "matching_entities": unified_matching_entities,
             "collections": list(unified_matching_entities.keys()),
             "timestamp": int(time.time())
@@ -1819,9 +1914,30 @@ class AblationTester:
         # Get the truth collection
         collection = self.db.collection(self.TRUTH_COLLECTION)
 
-        # Check if document with this query_id already exists
-        existing = collection.get(str(query_id))
+        # CRITICAL FIX: Check if truth document already exists using multiple methods
+        existing = None
+        try:
+            # Try direct key lookup first
+            existing = collection.get(str_query_id)
+
+            # If not found, try query-based lookup
+            if not existing:
+                query = f"""
+                    FOR doc IN {self.TRUTH_COLLECTION}
+                    FILTER doc.query_id == @query_id
+                    RETURN doc
+                """
+                cursor = self.db.aql.execute(query, bind_vars={"query_id": str_query_id})
+                results = list(cursor)
+                if results:
+                    existing = results[0]
+                    self.logger.info(f"Found existing truth document via query search instead of direct key lookup")
+        except Exception as e:
+            self.logger.warning(f"Error checking for existing truth document: {e}")
+            # Continue with assumption that document doesn't exist
+
         if existing:
+            self.logger.info(f"Found existing truth document for query {query_id}")
             # Compare existing document with new data
             existing_entities = existing.get("matching_entities", {})
 
@@ -1838,31 +1954,54 @@ class AblationTester:
                     )
 
             if changes:
-                # Scientific consistency: if we already have a set of entities for a collection,
-                # prefer to keep them rather than modify them
-                merged_entities = existing_entities.copy()
+                # CRITICAL FIX: Replace update with delete + insert to avoid issues with partially updated documents
+                try:
+                    # Delete the existing document
+                    collection.delete(existing["_key"])
+                    self.logger.info(f"Deleted existing truth document with key {existing['_key']}")
 
-                # Only add new collections, don't modify existing ones
-                for coll, entities in unified_matching_entities.items():
-                    if coll not in merged_entities:
-                        merged_entities[coll] = entities
+                    # Create merged entities
+                    merged_entities = existing_entities.copy()
 
-                # Update the document with merged entities
-                update_doc = {
-                    "_key": str(query_id),
-                    "matching_entities": merged_entities,
-                    "collections": list(merged_entities.keys()),
-                    "timestamp": int(time.time())
-                }
-                collection.update(update_doc)
-                self.logger.info(f"Updated unified truth data for query {query_id}")
+                    # Only add new collections, don't modify existing ones for scientific consistency
+                    for coll, entities in unified_matching_entities.items():
+                        if coll not in merged_entities:
+                            merged_entities[coll] = entities
+
+                    # Create new document with merged data
+                    new_doc = {
+                        "_key": str_query_id,
+                        "query_id": str_query_id,
+                        "query_uuid": str_query_id,
+                        "matching_entities": merged_entities,
+                        "collections": list(merged_entities.keys()),
+                        "timestamp": int(time.time())
+                    }
+
+                    # Insert the new document
+                    collection.insert(new_doc)
+                    self.logger.info(f"Created new merged truth document for query {query_id}")
+                except Exception as e:
+                    self.logger.error(f"Failed to update truth document: {e}")
+                    raise  # Re-raise to follow fail-stop principle
             else:
                 self.logger.info(f"No changes needed for unified truth data for query {query_id}")
         else:
             # Insert new document
-            collection.insert(truth_doc)
-            self.logger.info(f"Created new unified truth data for query {query_id}")
+            try:
+                collection.insert(truth_doc)
+                self.logger.info(f"Created new unified truth data for query {query_id}")
+            except Exception as e:
+                self.logger.error(f"Failed to insert truth document: {e}")
+                raise  # Re-raise to follow fail-stop principle
 
+        # CRITICAL FIX: Verify the data was actually stored
+        verification = collection.get(str_query_id)
+        if not verification:
+            self.logger.error(f"CRITICAL: Failed to verify truth data storage for query {query_id}")
+            raise RuntimeError(f"Truth data verification failed for query {query_id}")
+
+        self.logger.info(f"Successfully verified truth data storage for query {query_id}")
         return True
 
 
