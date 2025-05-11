@@ -1381,7 +1381,13 @@ class AblationTester:
                         if alt_truth_data:
                             self.logger.info(f"Using {len(alt_truth_data)} entities from alternate ID format")
                             truth_data = alt_truth_data
-                            return self._calculate_metrics_with_truth_data(results, truth_data, collection_name, is_ablated)
+                            return self._calculate_metrics_with_truth_data(
+                                query_id=query_id,
+                                results=results,
+                                truth_data=truth_data,
+                                collection_name=collection_name,
+                                is_ablated=is_ablated
+                            )
 
                     # Still no truth data found - this is a critical error
                     self.logger.error(
@@ -1436,6 +1442,7 @@ class AblationTester:
 
         # Use the helper method to calculate metrics
         return self._calculate_metrics_with_truth_data(
+            query_id=query_id,
             results=results,
             truth_data=truth_data,
             collection_name=collection_name,
@@ -1886,6 +1893,7 @@ class AblationTester:
 
     def _calculate_metrics_with_truth_data(
         self,
+        query_id: uuid.UUID,
         results: list[dict[str, Any]],
         truth_data: set[str],
         collection_name: str,
@@ -1894,6 +1902,7 @@ class AblationTester:
         """Helper method to calculate metrics with provided truth data.
 
         Args:
+            query_id: The UUID of the query.
             results: The search results.
             truth_data: The set of entity IDs that should match the query.
             collection_name: The name of the collection being tested.
@@ -1960,9 +1969,10 @@ class AblationTester:
             f"precision={precision:.4f}, recall={recall:.4f}, f1_score={f1_score:.4f}"
         )
 
-        # Create result object
+        # Create result object with correct field names to match AblationResult model
         result = AblationResult(
-            collection=collection_name,
+            query_id=query_id,
+            ablated_collection=collection_name,
             result_count=len(results),
             true_positives=true_positives,
             false_positives=false_positives,
@@ -1970,8 +1980,8 @@ class AblationTester:
             precision=precision,
             recall=recall,
             f1_score=f1_score,
-            impact=impact,
-            is_ablated=is_ablated,
+            execution_time_ms=0,  # Will be set by the caller
+            aql_query="",  # Will be set by the caller if needed
             metadata={},
         )
 
