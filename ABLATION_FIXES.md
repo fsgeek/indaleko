@@ -421,6 +421,114 @@ This ensures:
 - Scientific integrity by preventing experiments from continuing with missing or invalid data
 - Better debugging information with stack traces
 
+## Binary Precision/Recall Issue Fix
+
+Another critical issue was that precision and recall values were binary (either 0.0 or 1.0), rather than spanning a range of values. This prevented proper measurement of the impact of ablating different data collections on search quality.
+
+### Root Causes
+
+1. **Short-Circuit Query Execution**: The framework was returning empty results for ablated collections without actually executing queries. This prevented measuring the real impact of ablation.
+
+2. **Truth Data-Dependent Queries**: Queries were built using direct references to expected results rather than semantic queries, which defeats the purpose of ablation testing.
+
+3. **Improper Empty Truth Data Handling**: Edge cases weren't handled correctly, especially for empty truth data sets.
+
+### Fixes Implemented
+
+1. **Execute Real Queries on Ablated Collections**: Modified the `execute_query()` method to actually execute queries against ablated collections instead of short-circuiting:
+
+```python
+# OLD IMPLEMENTATION - prevented real ablation testing
+if is_ablated:
+    self.logger.info(f"Collection {collection_name} is currently ablated, returning empty results")
+    results = []
+    aql_query = f"// Collection {collection_name} is ablated, no query executed"
+    bind_vars = {}
+    return results, 0, aql_query
+
+# NEW IMPLEMENTATION - allows testing ablated collections
+if is_ablated:
+    self.logger.info(f"Collection {collection_name} is currently ablated - EXECUTING QUERY ON EMPTY COLLECTION")
+    # We don't shortcut to return empty results here - we need to run the query
+    # on the emptied collection to get true measurements
+```
+
+2. **Use Semantic Queries**: Modified `_build_combined_query()` to construct semantic queries without directly using truth data:
+
+```python
+# CRITICAL FIX: Do not target truth data keys directly - this defeats ablation purpose
+# Instead, build semantically meaningful queries based on collection type
+
+# Start building a proper semantic query based on collection type
+aql_query = f"""
+FOR doc IN {collection_name}
+"""
+
+# Add semantic filters based on collection type and search terms
+filters = []
+
+if collection_type == "music":
+    if "artist" in search_terms:
+        bind_vars["artist"] = search_terms["artist"]
+        filters.append("doc.artist == @artist")
+# ... (additional filters for other collection types)
+```
+
+3. **Improved Edge Case Handling**: Enhanced `_calculate_metrics_with_truth_data()` to correctly handle edge cases:
+
+```python
+# CRITICAL FIX: Handle non-ablated collections with empty truth data
+if not is_ablated and truth_data is not None and len(truth_data) == 0:
+    # If we have results but expected none, these are all false positives
+    if len(results) > 0:
+        self.logger.info(f"Collection {collection_name} has empty truth data but returned {len(results)} results - all are false positives")
+        # Precision is 0.0 (all false positives)
+        # Recall is technically 0/0, but defined as 1.0 since there were no expected results to find
+        result = AblationResult(
+            query_id=query_id,
+            ablated_collection=collection_name,
+            result_count=len(results),
+            true_positives=0,
+            false_positives=len(results),
+            false_negatives=0,
+            precision=0.0,  # All false positives
+            recall=1.0,     # Found 0 of 0 expected (perfect recall)
+            f1_score=0.0,   # With precision=0, F1 is always 0
+            execution_time_ms=0,
+            aql_query="",
+            metadata={},
+        )
+        return result
+```
+
+### Verification
+
+Test scripts have been created to verify that precision and recall values now span a range of values:
+
+1. `test_ablation_fixed.py` - Tests baseline and ablated search with real Taylor Swift songs
+2. `analyze_results.py` - Analyzes precision/recall distributions in ablation experiment results
+
+Testing showed a clear improvement with precision values of 0.4545 (not just 0.0 or 1.0) from the fixed code, demonstrating that the fixes are working correctly:
+
+```
+Precision: 0.4545
+Recall: 1.0000
+F1 Score: 0.6250
+True Positives: 5
+False Positives: 6
+False Negatives: 0
+```
+
+### Benefits
+
+These fixes ensure that:
+1. Ablation tests now measure the real impact of removing collections on search quality
+2. Precision and recall values span a range of values, not just 0.0 and 1.0
+3. Edge cases such as empty truth data are handled correctly
+4. The framework now produces scientifically valid metrics for evaluation
+
+This significantly improves the scientific validity of the ablation framework for measuring how different activity types affect search quality.
+
 ## Next Steps
 
 1. **Auto-verification**: Consider adding more comprehensive automatic verification of test results.

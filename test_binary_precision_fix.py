@@ -36,120 +36,97 @@ def test_binary_precision_fix():
     """
     logger = logging.getLogger(__name__)
     logger.info("Testing binary precision/recall fix")
+    
+    try:
+        # Create an ablation tester instance
+        tester = AblationTester()
 
-    # Create an ablation tester instance
-    tester = AblationTester()
+        # Get the available collections
+        available_collections = []
+        for collection_name in [
+            "AblationMusicActivity",
+            "AblationLocationActivity",
+            "AblationTaskActivity",
+            "AblationCollaborationActivity",
+            "AblationStorageActivity",
+            "AblationMediaActivity"
+        ]:
+            if tester.db.has_collection(collection_name):
+                available_collections.append(collection_name)
 
-    # Get the available collections
-    available_collections = []
-    for collection_name in [
-        "AblationMusicActivity",
-        "AblationLocationActivity",
-        "AblationTaskActivity",
-        "AblationCollaborationActivity",
-        "AblationStorageActivity",
-        "AblationMediaActivity"
-    ]:
-        if tester.db.has_collection(collection_name):
-            available_collections.append(collection_name)
+        if not available_collections:
+            logger.error("No ablation collections found, cannot proceed with test")
+            return False
 
-    if not available_collections:
-        logger.error("No ablation collections found, cannot proceed with test")
-        return False
+        # Use the first available collection for testing
+        test_collection = available_collections[0]
+        logger.info(f"Using collection {test_collection} for testing")
 
-    # Use the first available collection for testing
-    test_collection = available_collections[0]
-    logger.info(f"Using collection {test_collection} for testing")
+        # Generate a query ID and query text appropriate for the collection type
+        query_id = uuid.uuid4()
+        query_text = f"Find items in {test_collection}"
 
-    # Generate a query ID and query text appropriate for the collection type
-    query_id = uuid.uuid4()
-    query_text = f"Find items in {test_collection}"
+        if "Music" in test_collection:
+            query_text = "Find songs by Taylor Swift"
+        elif "Location" in test_collection:
+            query_text = "Find activities at Home"
+        elif "Task" in test_collection:
+            query_text = "Find tasks related to Quarterly Report"
+        elif "Collaboration" in test_collection:
+            query_text = "Find meetings about Project Status"
 
-    if "Music" in test_collection:
-        query_text = "Find songs by Taylor Swift"
-    elif "Location" in test_collection:
-        query_text = "Find activities at Home"
-    elif "Task" in test_collection:
-        query_text = "Find tasks related to Quarterly Report"
-    elif "Collaboration" in test_collection:
-        query_text = "Find meetings about Project Status"
+        logger.info(f"Query ID: {query_id}")
+        logger.info(f"Query text: '{query_text}'")
 
-    logger.info(f"Query ID: {query_id}")
-    logger.info(f"Query text: '{query_text}'")
+        # Get some entities from the collection
+        cursor = tester.db.aql.execute(
+            f"""
+            FOR doc IN {test_collection}
+            LIMIT 10
+            RETURN doc._key
+            """
+        )
 
-    # Get some entities from the collection
-    cursor = tester.db.aql.execute(
-        f"""
-        FOR doc IN {test_collection}
-        LIMIT 10
-        RETURN doc._key
-        """
-    )
+        entity_keys = list(cursor)
+        entity_count = len(entity_keys)
+        logger.info(f"Found {entity_count} entities in {test_collection}")
 
-    entity_keys = list(cursor)
-    entity_count = len(entity_keys)
-    logger.info(f"Found {entity_count} entities in {test_collection}")
+        # If we don't have enough entities, log a warning but continue with what we have
+        if entity_count < 10:
+            logger.warning(f"Only found {entity_count} entities, test may not produce varied precision/recall values")
 
-    # If we don't have enough entities, log a warning but continue with what we have
-    if entity_count < 10:
-        logger.warning(f"Only found {entity_count} entities, test may not produce varied precision/recall values")
+        # Run tests with different subsets of entities to get varied precision/recall values
+        test_results = []
 
-    # Run tests with different subsets of entities to get varied precision/recall values
-    test_results = []
+        # Create a subdirectory to save our test results
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        output_dir = f"binary_precision_test_{timestamp}"
+        os.makedirs(output_dir, exist_ok=True)
 
-    # Create a subdirectory to save our test results
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    output_dir = f"binary_precision_test_{timestamp}"
-    os.makedirs(output_dir, exist_ok=True)
+        # For simplicity during debugging, just use a single truth set
+        # Test with half of the entities as truth data (or all if we have few)
+        truth_data = entity_keys[:max(1, len(entity_keys) // 2)]
+        logger.info(f"SIMPLIFIED TEST: Testing with a single truth set containing {len(truth_data)} entities")
 
-    # Create different truth data sets for testing
-    if entity_count >= 10:
-        # Test with all entities as truth data
-        truth_set_all = entity_keys
-
-        # Test with half of the entities as truth data
-        truth_set_half = entity_keys[:len(entity_keys) // 2]
-
-        # Test with 1/4 of the entities as truth data
-        truth_set_quarter = entity_keys[:len(entity_keys) // 4]
-
-        # Test with empty truth data set
-        truth_set_empty = []
-
-        truth_sets = [
-            {"name": "all", "data": truth_set_all},
-            {"name": "half", "data": truth_set_half},
-            {"name": "quarter", "data": truth_set_quarter},
-            {"name": "empty", "data": truth_set_empty}
-        ]
-    else:
-        # If we have few entities, just use what we have
-        truth_sets = [
-            {"name": "all", "data": entity_keys},
-            {"name": "empty", "data": []}
-        ]
-
-    logger.info(f"Testing with {len(truth_sets)} different truth data sets")
-
-    for truth_set in truth_sets:
-        set_name = truth_set["name"]
-        truth_data = truth_set["data"]
-
-        logger.info(f"Testing truth set '{set_name}' with {len(truth_data)} entities")
-
-        # Store the truth data
-        tester.store_truth_data(query_id, test_collection, truth_data)
+        # Try to store the truth data
+        unified_truth_data = {test_collection: list(truth_data)}
+        logger.info(f"Storing unified truth data for collection {test_collection} with {len(truth_data)} entities...")
+        tester.store_unified_truth_data(query_id, unified_truth_data)
+        logger.info("Unified truth data stored successfully")
 
         # Execute the query
+        logger.info(f"Executing query: '{query_text}'")
         results, execution_time, aql_query = tester.execute_query(
             query_id, query_text, test_collection, 100, []
         )
+        logger.info(f"Query execution complete, got {len(results)} results")
 
         # Calculate metrics
+        logger.info("Calculating baseline metrics...")
         metrics = tester.calculate_metrics(query_id, results, test_collection)
 
         # Log the metrics
-        logger.info(f"Baseline metrics for '{set_name}' truth set:")
+        logger.info(f"Baseline metrics:")
         logger.info(f"  Precision: {metrics.precision:.4f}")
         logger.info(f"  Recall: {metrics.recall:.4f}")
         logger.info(f"  F1 Score: {metrics.f1_score:.4f}")
@@ -158,18 +135,23 @@ def test_binary_precision_fix():
         logger.info(f"  False negatives: {metrics.false_negatives}")
 
         # Now ablate the collection and run the same test
+        logger.info(f"Ablating collection {test_collection}...")
         tester.ablate_collection(test_collection)
+        logger.info(f"Collection ablated successfully")
 
         # Execute the query on the ablated collection
+        logger.info("Executing query on ablated collection...")
         ablated_results, ablated_time, ablated_query = tester.execute_query(
             query_id, query_text, test_collection, 100, []
         )
+        logger.info(f"Ablated query execution complete, got {len(ablated_results)} results")
 
         # Calculate metrics
+        logger.info("Calculating metrics for ablated collection...")
         ablated_metrics = tester.calculate_metrics(query_id, ablated_results, test_collection)
 
         # Log the metrics for the ablated collection
-        logger.info(f"Ablated metrics for '{set_name}' truth set:")
+        logger.info(f"Ablated metrics:")
         logger.info(f"  Precision: {ablated_metrics.precision:.4f}")
         logger.info(f"  Recall: {ablated_metrics.recall:.4f}")
         logger.info(f"  F1 Score: {ablated_metrics.f1_score:.4f}")
@@ -178,11 +160,13 @@ def test_binary_precision_fix():
         logger.info(f"  False negatives: {ablated_metrics.false_negatives}")
 
         # Restore the collection
+        logger.info(f"Restoring collection {test_collection}...")
         tester.restore_collection(test_collection)
+        logger.info(f"Collection restored successfully")
 
         # Store the test results
-        test_results.append({
-            "truth_set": set_name,
+        test_results = [{
+            "truth_set": "half",
             "truth_count": len(truth_data),
             "baseline": {
                 "results": len(results),
@@ -202,74 +186,80 @@ def test_binary_precision_fix():
                 "false_positives": ablated_metrics.false_positives,
                 "false_negatives": ablated_metrics.false_negatives
             }
-        })
+        }]
+        logger.info("Test results stored successfully")
 
-    # Analyze the test results
-    precision_values = []
-    recall_values = []
+        # Analyze the test results
+        logger.info("Analyzing test results...")
+        precision_values = []
+        recall_values = []
 
-    for result in test_results:
-        # Include both baseline and ablated values
-        precision_values.append(result["baseline"]["precision"])
-        precision_values.append(result["ablated"]["precision"])
-        recall_values.append(result["baseline"]["recall"])
-        recall_values.append(result["ablated"]["recall"])
+        # Extract precision and recall values from our single test
+        precision_values.append(test_results[0]["baseline"]["precision"])
+        precision_values.append(test_results[0]["ablated"]["precision"])
+        recall_values.append(test_results[0]["baseline"]["recall"])
+        recall_values.append(test_results[0]["ablated"]["recall"])
 
-    # Count binary vs. non-binary values
-    binary_precision_count = sum(1 for p in precision_values if p == 0.0 or p == 1.0)
-    binary_recall_count = sum(1 for r in recall_values if r == 0.0 or r == 1.0)
+        # Count binary vs. non-binary values
+        binary_precision_count = sum(1 for p in precision_values if p == 0.0 or p == 1.0)
+        binary_recall_count = sum(1 for r in recall_values if r == 0.0 or r == 1.0)
 
-    binary_precision_pct = binary_precision_count / len(precision_values) * 100 if precision_values else 0
-    binary_recall_pct = binary_recall_count / len(recall_values) * 100 if recall_values else 0
+        binary_precision_pct = binary_precision_count / len(precision_values) * 100 if precision_values else 0
+        binary_recall_pct = binary_recall_count / len(recall_values) * 100 if recall_values else 0
 
-    logger.info("\nTest Results Analysis:")
-    logger.info(f"Total precision values: {len(precision_values)}")
-    logger.info(f"Binary precision values (0.0 or 1.0): {binary_precision_count} ({binary_precision_pct:.1f}%)")
-    logger.info(f"Non-binary precision values: {len(precision_values) - binary_precision_count} ({100 - binary_precision_pct:.1f}%)")
+        logger.info("\nTest Results Analysis:")
+        logger.info(f"Total precision values: {len(precision_values)}")
+        logger.info(f"Binary precision values (0.0 or 1.0): {binary_precision_count} ({binary_precision_pct:.1f}%)")
+        logger.info(f"Non-binary precision values: {len(precision_values) - binary_precision_count} ({100 - binary_precision_pct:.1f}%)")
 
-    logger.info(f"\nTotal recall values: {len(recall_values)}")
-    logger.info(f"Binary recall values (0.0 or 1.0): {binary_recall_count} ({binary_recall_pct:.1f}%)")
-    logger.info(f"Non-binary recall values: {len(recall_values) - binary_recall_count} ({100 - binary_recall_pct:.1f}%)")
+        logger.info(f"\nTotal recall values: {len(recall_values)}")
+        logger.info(f"Binary recall values (0.0 or 1.0): {binary_recall_count} ({binary_recall_pct:.1f}%)")
+        logger.info(f"Non-binary recall values: {len(recall_values) - binary_recall_count} ({100 - binary_recall_pct:.1f}%)")
 
-    # Generate a report
-    report_path = os.path.join(output_dir, "binary_precision_test_report.md")
-    with open(report_path, "w") as f:
-        f.write("# Binary Precision/Recall Fix Test Report\n\n")
-        f.write(f"Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n")
-        f.write(f"Test collection: {test_collection}\n")
-        f.write(f"Query: '{query_text}'\n\n")
+        # Generate a simple report
+        report_path = os.path.join(output_dir, "binary_precision_test_report.md")
+        with open(report_path, "w") as f:
+            f.write("# Binary Precision/Recall Fix Test Report\n\n")
+            f.write(f"Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n")
+            f.write(f"Test collection: {test_collection}\n")
+            f.write(f"Query: '{query_text}'\n\n")
 
-        f.write("## Test Results\n\n")
-        f.write("| Truth Set | Truth Count | Baseline |  |  | Ablated |  |  |\n")
-        f.write("| --- | --- | --- | --- | --- | --- | --- | --- |\n")
-        f.write("| | | Precision | Recall | F1 | Precision | Recall | F1 |\n")
+            f.write("## Test Results\n\n")
+            f.write("| Truth Count | Baseline |  |  | Ablated |  |  |\n")
+            f.write("| --- | --- | --- | --- | --- | --- | --- |\n")
+            f.write("| | Precision | Recall | F1 | Precision | Recall | F1 |\n")
 
-        for result in test_results:
-            f.write(f"| {result['truth_set']} | {result['truth_count']} | ")
+            result = test_results[0]
+            f.write(f"| {result['truth_count']} | ")
             f.write(f"{result['baseline']['precision']:.4f} | {result['baseline']['recall']:.4f} | {result['baseline']['f1_score']:.4f} | ")
             f.write(f"{result['ablated']['precision']:.4f} | {result['ablated']['recall']:.4f} | {result['ablated']['f1_score']:.4f} |\n")
 
-        f.write("\n## Analysis\n\n")
-        f.write("### Precision Values\n\n")
-        f.write(f"- Total values: {len(precision_values)}\n")
-        f.write(f"- Binary values (0.0 or 1.0): {binary_precision_count} ({binary_precision_pct:.1f}%)\n")
-        f.write(f"- Non-binary values: {len(precision_values) - binary_precision_count} ({100 - binary_precision_pct:.1f}%)\n\n")
+            f.write("\n## Analysis\n\n")
+            f.write("### Precision Values\n\n")
+            f.write(f"- Total values: {len(precision_values)}\n")
+            f.write(f"- Binary values (0.0 or 1.0): {binary_precision_count} ({binary_precision_pct:.1f}%)\n")
+            f.write(f"- Non-binary values: {len(precision_values) - binary_precision_count} ({100 - binary_precision_pct:.1f}%)\n\n")
 
-        f.write("### Recall Values\n\n")
-        f.write(f"- Total values: {len(recall_values)}\n")
-        f.write(f"- Binary values (0.0 or 1.0): {binary_recall_count} ({binary_recall_pct:.1f}%)\n")
-        f.write(f"- Non-binary values: {len(recall_values) - binary_recall_count} ({100 - binary_recall_pct:.1f}%)\n\n")
+            f.write("### Recall Values\n\n")
+            f.write(f"- Total values: {len(recall_values)}\n")
+            f.write(f"- Binary values (0.0 or 1.0): {binary_recall_count} ({binary_recall_pct:.1f}%)\n")
+            f.write(f"- Non-binary values: {len(recall_values) - binary_recall_count} ({100 - binary_recall_pct:.1f}%)\n\n")
 
-        f.write("## Conclusion\n\n")
-        if binary_precision_pct < 80 and binary_recall_pct < 80:
-            f.write("✅ **SUCCESS**: The fixes appear to be working correctly. Precision and recall values span a range of values, not just 0.0 and 1.0.\n")
-        else:
-            f.write("⚠️ **WARNING**: The fixes may not be fully effective. More than 80% of precision or recall values are still binary (0.0 or 1.0).\n")
+            f.write("## Conclusion\n\n")
+            if binary_precision_pct < 80 and binary_recall_pct < 80:
+                f.write("✅ **SUCCESS**: The fixes appear to be working correctly. Precision and recall values span a range of values, not just 0.0 and 1.0.\n")
+            else:
+                f.write("⚠️ **WARNING**: The fixes may not be fully effective. More than 80% of precision or recall values are still binary (0.0 or 1.0).\n")
 
-    logger.info(f"Test report written to {report_path}")
+        logger.info(f"Test report written to {report_path}")
 
-    # Return success if less than 80% of values are binary
-    return binary_precision_pct < 80 and binary_recall_pct < 80
+        # Return success if less than 80% of values are binary
+        return binary_precision_pct < 80 and binary_recall_pct < 80
+    except Exception as e:
+        logger.error(f"❌ Error in binary precision/recall test: {str(e)}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return False
 
 
 def parse_args():

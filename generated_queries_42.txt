@@ -1,5 +1,0 @@
-1: find files I worked on in San Francisco
-2: show me files I accessed while listening to Jazz music
-3: what documents did I edit while playing music on my Headphones
-4: find files I worked on in the library
-5: show me photos taken in San Francisco when the temperature was below 50°F

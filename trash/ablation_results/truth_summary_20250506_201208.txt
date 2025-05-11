@@ -1,8 +1,0 @@
-Ablation Test Truth Data Summary
-==============================
-
-Generated: 20250506_201208
-Total positive examples: 0
-Total negative examples: 0
-
-Query Distribution:

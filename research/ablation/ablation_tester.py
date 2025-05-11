@@ -334,6 +334,10 @@ class AblationTester:
         without arbitrary result limits. This allows proper measurement of how
         ablation affects search results in a scientifically valid manner.
 
+        CRITICAL ABLATION FIX: This method does NOT short-circuit when a collection is ablated.
+        Instead, it executes a real query to observe what happens when an ablated collection
+        is queried, which gives us a true measurement of how ablation affects search results.
+
         Args:
             query_id: The UUID of the query.
             query: The search query text.
@@ -362,79 +366,83 @@ class AblationTester:
         # Get truth data for this query and collection
         truth_data = self.get_collection_truth_data(query_id, collection_name)
 
-        # CRITICAL FIX: Check for ablated collections - if this collection is being ablated,
-        # we should get 0 results, but we should still track it against truth data
-        # Check if the collection is currently ablated
+        # Check if the collection is currently ablated - for logging only
+        # CRITICAL ABLATION FIX: We still execute the query even if the collection is ablated
+        # to see what results would be returned from an ablated collection
         is_ablated = self.ablated_collections.get(collection_name, False)
 
         if is_ablated:
-            self.logger.info(f"Collection {collection_name} is currently ablated, returning empty results")
-            results = []
-            aql_query = f"// Collection {collection_name} is ablated, no query executed"
-            bind_vars = {}
+            self.logger.info(f"Collection {collection_name} is currently ablated - EXECUTING QUERY ON EMPTY COLLECTION")
+            # We don't shortcut to return empty results here - we need to run the query
+            # on the emptied collection to get true measurements
+
+        # Determine if we should use cross-collection queries based on the query and related collections
+        needs_cross_collection = self._should_use_cross_collection(search_terms, related_collections)
+
+        # Build and execute the appropriate query
+        if needs_cross_collection and related_collections:
+            # Use cross-collection query execution
+            self.logger.info(f"Using cross-collection query for {collection_name} with {related_collections}")
+            results, aql_query, bind_vars = self._execute_cross_collection_query(
+                query_id, query, collection_name, related_collections, search_terms, truth_data,
+            )
         else:
-            # Determine if we should use cross-collection queries based on the query and related collections
-            needs_cross_collection = self._should_use_cross_collection(search_terms, related_collections)
+            # Build a standard combined query that guarantees truth data recall + semantic filters
+            aql_query, bind_vars = self._build_combined_query(collection_name, search_terms, truth_data)
 
-            # Build and execute the appropriate query
-            if needs_cross_collection and related_collections:
-                # Use cross-collection query execution
-                self.logger.info(f"Using cross-collection query for {collection_name} with {related_collections}")
-                results, aql_query, bind_vars = self._execute_cross_collection_query(
-                    query_id, query, collection_name, related_collections, search_terms, truth_data,
-                )
-            else:
-                # Build a standard combined query that guarantees truth data recall + semantic filters
-                aql_query, bind_vars = self._build_combined_query(collection_name, search_terms, truth_data)
+            # Log the query for debugging
+            self.logger.info(f"Executing single-collection query on {collection_name}: {aql_query}")
+            self.logger.info(f"Search parameters: {bind_vars}")
+            self.logger.info(f"Collection ablation status: {is_ablated}")
 
-                # Log the query for debugging
-                self.logger.info(f"Executing single-collection query on {collection_name}: {aql_query}")
-                if "truth_keys" in bind_vars:
-                    self.logger.info(f"Truth keys: {len(bind_vars['truth_keys'])} keys included for 100% recall")
-                self.logger.info(f"Search parameters: {bind_vars}")
+            # Execute the query
+            result_cursor = self.db.aql.execute(
+                aql_query,
+                bind_vars=bind_vars,
+            )
 
-                # Execute the query
-                result_cursor = self.db.aql.execute(
-                    aql_query,
-                    bind_vars=bind_vars,
-                )
-
-                # Convert cursor to list
-                results = [doc for doc in result_cursor]
+            # Convert cursor to list
+            results = [doc for doc in result_cursor]
 
         # Calculate execution time
         execution_time_ms = int((time.time() - start_time) * 1000)
 
-        # CRITICAL FIX: More detailed logging for debugging
+        # Enhanced diagnostic logging for query execution
         self.logger.info(f"Query execution complete. Collection: {collection_name}, Results: {len(results)}")
+        self.logger.info(f"Query used: {aql_query}")
+        self.logger.info(f"Bind variables: {bind_vars}")
+        self.logger.info(f"Truth data size: {len(truth_data) if truth_data else 0}")
+        self.logger.info(f"Result set size: {len(results)}")
 
-        # Compare results with truth data for reporting (but don't modify the results)
-        if truth_data:
+        # Calculate and log precision/recall immediately for diagnostic purposes
+        if truth_data is not None:
             result_keys = set(doc.get("_key") for doc in results)
             true_positives = len(result_keys.intersection(truth_data))
             false_positives = len(result_keys - truth_data)
             false_negatives = len(truth_data - result_keys)
 
-            precision = true_positives / len(results) if results else 0
-            recall = true_positives / len(truth_data) if truth_data else 0
-            f1 = 2 * precision * recall / (precision + recall) if precision + recall > 0 else 0
+            precision = true_positives / len(results) if results else 0.0
+            recall = true_positives / len(truth_data) if truth_data else 1.0  # 1.0 for empty truth data
+            f1 = 2 * precision * recall / (precision + recall) if precision + recall > 0 else 0.0
 
-            # CRITICAL FIX: Log the specific keys that were expected vs found for debugging
-            self.logger.info(f"Truth data keys: {truth_data}")
-            self.logger.info(f"Result keys: {result_keys}")
-            self.logger.info(f"Query returned {len(results)} results with {len(truth_data)} expected matches")
-            self.logger.info(f"True positives: {true_positives}, False positives: {false_positives}, False negatives: {false_negatives}")
-            self.logger.info(f"Precision: {precision:.2f}, Recall: {recall:.2f}, F1: {f1:.2f}")
+            # Special case handling for empty truth data
+            if len(truth_data) == 0:
+                if len(results) == 0:
+                    precision = 1.0  # Found 0 of 0 expected results
+                    recall = 1.0     # Found all expected results (there were none)
+                    f1 = 1.0
+                else:
+                    precision = 0.0  # All results are false positives
+                    recall = 1.0     # Found all expected results (there were none)
+                    f1 = 0.0
 
-            if false_negatives > 0:
-                self.logger.info(f"Missing {false_negatives} expected matches from results")
-                missing_keys = truth_data - result_keys
-                self.logger.info(f"Missing keys: {missing_keys}")
-            if false_positives > 0:
-                self.logger.info(f"Found {false_positives} unexpected matches in results")
+            self.logger.info(f"DIAGNOSTIC - Collection: {collection_name}, Ablated: {is_ablated}")
+            self.logger.info(f"DIAGNOSTIC - True Positives: {true_positives}, False Positives: {false_positives}, False Negatives: {false_negatives}")
+            self.logger.info(f"DIAGNOSTIC - Precision: {precision:.4f}, Recall: {recall:.4f}, F1: {f1:.4f}")
         else:
-            # CRITICAL FIX: Changed from warning to info since this is likely a valid case of empty truth data
-            self.logger.info(f"No truth data available for query {query_id} in collection {collection_name} - metrics will be based on this assumption")
+            self.logger.warning(f"Cannot calculate precision/recall - no truth data available")
+
+        return results, execution_time_ms, aql_query
 
         return results, execution_time_ms, aql_query
 
