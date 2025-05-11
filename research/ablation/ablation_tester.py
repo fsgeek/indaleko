@@ -225,6 +225,9 @@ class AblationTester:
         Returns:
             Set[str]: The set of entity IDs that should match the query in this collection.
         """
+        # DEBUGFIX: Print directly to indicate this version is running
+        print(f"DEBUGFIX: FIXED VERSION - Looking up truth data for {collection_name}")
+
         # CRITICAL FIX: Enhanced logging for debugging
         self.logger.info(f"Looking up collection truth data for query {query_id} in collection {collection_name}")
 
