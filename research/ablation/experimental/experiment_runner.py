@@ -126,13 +126,9 @@ class ExperimentRunner:
         self.clear_existing = clear_existing
 
         # Initialize database connection
-        try:
-            self.db_config = IndalekoDBConfig()
-            self.db = self.db_config.get_arangodb()
-            self.logger.info("Successfully connected to ArangoDB database")
-        except Exception as e:
-            self.logger.error(f"CRITICAL: Failed to connect to database: {e}")
-            sys.exit(1)  # Fail-stop immediately
+        self.db_config = IndalekoDBConfig()
+        self.db = self.db_config.get_arangodb()
+        self.logger.info("Successfully connected to ArangoDB database")
 
         # Initialize activity data providers
         self.activity_data_providers = self._setup_activity_data_providers()
@@ -346,6 +342,9 @@ class ExperimentRunner:
         test_collections: List[str],
         control_collections: List[str]
     ) -> List[Dict]:
+        # Track which query_id/collection combinations have already been processed
+        # to avoid generating duplicate truth data with different entities
+        processed_query_collection_pairs = set()
         """Generate cross-collection queries for ablation testing.
 
         Args:
@@ -398,19 +397,15 @@ class ExperimentRunner:
             # Generate queries for each activity type in the pair
             queries_for_pair = []
             for activity_type in activity_types:
-                try:
-                    # Generate diverse queries with the EnhancedQueryGenerator
-                    activity_queries = self.query_generator.generate_enhanced_queries(
-                        activity_type,
-                        count=self.query_count // len(activity_types) + 1,
-                    )
-                    self.logger.info(
-                        f"Generated {len(activity_queries)} diverse queries for {activity_type}"
-                    )
-                    queries_for_pair.extend(activity_queries)
-                except Exception as e:
-                    self.logger.error(f"CRITICAL: Failed to generate queries: {e}")
-                    sys.exit(1)  # Fail-stop immediately
+                # Generate diverse queries with the EnhancedQueryGenerator
+                activity_queries = self.query_generator.generate_enhanced_queries(
+                    activity_type,
+                    count=self.query_count // len(activity_types) + 1,
+                )
+                self.logger.info(
+                    f"Generated {len(activity_queries)} diverse queries for {activity_type}"
+                )
+                queries_for_pair.extend(activity_queries)
 
             # Limit to requested count
             queries_for_pair = queries_for_pair[:self.query_count]
@@ -449,70 +444,84 @@ class ExperimentRunner:
                     self.logger.info(f"Using fixed query ID {collection_query_id} for {collection}")
 
                     # Find matching entities in the collection - using a DETERMINISTIC approach
-                    try:
-                        # CRITICAL FIX: Use a fixed deterministic approach for entity selection
-                        # The key is ensuring the EXACT SAME query always selects the EXACT SAME entities
-                        # We'll use collection_query_id as a stable, deterministic seed
+                    # CRITICAL FIX: Use a fixed deterministic approach for entity selection
+                    # The key is ensuring the EXACT SAME query always selects the EXACT SAME entities
+                    # We'll use collection_query_id as a stable, deterministic seed
 
-                        # Convert the collection query ID to a deterministic seed
-                        # Using a consistent hash function for the seed value
-                        seed_str = str(collection_query_id).replace('-', '')
-                        # Use more bits from the UUID for better distribution
-                        seed_value = int(seed_str[:12], 16)  # Use 12 hex chars instead of 8
+                    # Convert the collection query ID to a deterministic seed
+                    # Using a consistent hash function for the seed value
+                    seed_str = str(collection_query_id).replace('-', '')
+                    # Use more bits from the UUID for better distribution
+                    seed_value = int(seed_str[:12], 16)  # Use 12 hex chars instead of 8
 
-                        # Fix the offset to ensure the same entities are always selected for the same query
-                        # Use a more sophisticated formula that's less likely to have collisions
-                        # The magic numbers here (50, 7, 10) are chosen to provide good distribution
-                        # while still being deterministic
-                        fixed_offset = (seed_value % 50) + (self.current_round * 7) % 10
+                    # Fix the offset to ensure the same entities are always selected for the same query
+                    # Use a more sophisticated formula that's less likely to have collisions
+                    # The magic numbers here (50, 7, 10) are chosen to provide good distribution
+                    # while still being deterministic
+                    fixed_offset = (seed_value % 50) + (self.current_round * 7) % 10
 
-                        # Log the seed and offset for debugging
-                        self.logger.info(f"Using seed {seed_value} with fixed offset {fixed_offset} for {collection}")
+                    # Log the seed and offset for debugging
+                    self.logger.info(f"Using seed {seed_value} with fixed offset {fixed_offset} for {collection}")
 
-                        # Always use a fixed AQL query with standardized sorting
-                        # Using stable sort by _key (no random functions) and fixed entity count
-                        cursor = self.db.aql.execute(
-                            f"""
-                            FOR doc IN {collection}
-                            SORT doc._key ASC  /* Use stable ascending sort by document key */
-                            LIMIT {fixed_offset}, 5  /* Take exactly 5 entities with fixed offset */
-                            RETURN doc._key
-                            """
-                        )
-                        entity_ids = [doc_key for doc_key in cursor]
+                    # Always use a fixed AQL query with standardized sorting
+                    # Using stable sort by _key (no random functions) and fixed entity count
+                    cursor = self.db.aql.execute(
+                        f"""
+                        FOR doc IN {collection}
+                        SORT doc._key ASC  /* Use stable ascending sort by document key */
+                        LIMIT {fixed_offset}, 5  /* Take exactly 5 entities with fixed offset */
+                        RETURN doc._key
+                        """
+                    )
+                    entity_ids = [doc_key for doc_key in cursor]
 
-                        self.logger.info(
-                            f"Selected {len(entity_ids)} deterministic entities for query {collection_query_id} in {collection}"
-                        )
+                    self.logger.info(
+                        f"Selected {len(entity_ids)} deterministic entities for query {collection_query_id} in {collection}"
+                    )
 
-                        # Store truth data with the collection-specific query ID
-                        ablation_tester.store_truth_data(collection_query_id, collection, entity_ids)
+                    # Record entities for this query-collection pair
+                    matching_entities[collection] = entity_ids
 
-                        # Record entities for this query-collection pair
-                        matching_entities[collection] = entity_ids
+                    # CRITICAL FIX: Generate truth data for potential related collections
+                    # This ensures truth data exists for cross-collection queries
+                    related_collections = self._identify_potential_related_collections(
+                        query_text, collection
+                    )
+                    if related_collections:
+                        self.logger.info(f"Identified potential related collections for {collection}: {related_collections}")
 
-                        # CRITICAL FIX: Generate truth data for potential related collections
-                        # This ensures truth data exists for cross-collection queries
-                        related_collections = self._identify_potential_related_collections(
-                            query_text, collection
-                        )
-                        if related_collections:
-                            self.logger.info(f"Identified potential related collections for {collection}: {related_collections}")
-                            # Store empty truth data for related collections to avoid "No truth data found" warnings
-                            for related_collection in related_collections:
-                                # Generate a deterministic query ID for this related collection as well
-                                related_query_id = generate_deterministic_uuid(
-                                    f"fixed_query:{related_collection}:{i}:{self.seed}:{self.current_round}"
-                                )
-                                # Store empty truth data - we just want to prevent "No truth data found" warnings
-                                # Important: We must pass an empty list, not entities that might not exist!
-                                self.logger.info(f"Storing empty truth data for related collection {related_collection}")
-                                empty_truth_data = []  # Empty list ensures no entity validation errors
-                                ablation_tester.store_truth_data(related_query_id, related_collection, empty_truth_data)
+                        # For each related collection, add an empty list to matching_entities
+                        # These will be included in the unified truth data later
+                        for related_collection in related_collections:
+                            # Skip if we already have data for this collection
+                            if related_collection in matching_entities:
+                                continue
 
-                    except Exception as e:
-                        self.logger.error(f"CRITICAL: Failed to process truth data: {e}")
-                        sys.exit(1)  # Fail-stop immediately
+                            # Add empty list for this related collection
+                            self.logger.info(f"Adding empty truth data for related collection {related_collection}")
+                            matching_entities[related_collection] = []
+
+                # After processing all collections, store the unified truth data under the base query ID
+                self._store_unified_truth_data(ablation_tester, base_query_id, matching_entities)
+
+                # Generate collection-specific query IDs for result tracking
+                # and store the SAME truth data under each collection-specific ID
+                for collection, entities in matching_entities.items():
+                    # Generate a deterministic query ID for this collection
+                    collection_query_id = generate_deterministic_uuid(
+                        f"fixed_query:{collection}:{i}:{self.seed}:{self.current_round}"
+                    )
+
+                    # Store in collection_query_ids mapping for later use
+                    collection_query_ids[collection] = collection_query_id
+
+                    # CRITICAL FIX: Store the SAME unified truth data under each collection-specific query ID
+                    # This ensures truth data can be found regardless of which ID is used
+                    self._store_unified_truth_data(ablation_tester, collection_query_id, matching_entities)
+
+                    # Log for debugging
+                    self.logger.info(f"Using collection-specific query ID {collection_query_id} for {collection} with unified truth data")
+
 
                 # Add query to the result list
                 all_queries.append({
@@ -543,26 +552,21 @@ class ExperimentRunner:
         """
         self.logger.info("=== Starting Comprehensive Ablation Experiment ===")
 
-        try:
-            # Clear existing data if requested
-            self.clear_existing_data()
+        # Clear existing data if requested
+        self.clear_existing_data()
 
-            # Generate synthetic test data
-            self.generate_test_data()
+        # Generate synthetic test data
+        self.generate_test_data()
 
-            # Run each experimental round
-            for round_num in range(1, self.rounds + 1):
-                self.run_round(round_num)
+        # Run each experimental round
+        for round_num in range(1, self.rounds + 1):
+            self.run_round(round_num)
 
-            # Generate cross-round analysis
-            self.generate_final_report()
+        # Generate cross-round analysis
+        self.generate_final_report()
 
-            self.logger.info("=== Experiment Completed Successfully ===")
-            return True
-
-        except Exception as e:
-            self.logger.exception(f"CRITICAL: Experiment failed: {e}")
-            return False
+        self.logger.info("=== Experiment Completed Successfully ===")
+        return True
 
     def run_round(self, round_number: int) -> bool:
         """Run a single experimental round.
@@ -642,37 +646,33 @@ class ExperimentRunner:
 
                 self.logger.info(f"Testing query: {query_text}")
 
-                try:
-                    # Process each collection in the query
-                    for collection_name in query["collections"]:
-                        # Skip if this collection isn't in the current test group
-                        if collection_name not in test_collections:
-                            continue
+                # Process each collection in the query
+                for collection_name in query["collections"]:
+                    # Skip if this collection isn't in the current test group
+                    if collection_name not in test_collections:
+                        continue
 
-                        # Use collection-specific query ID
-                        collection_query_id = uuid.UUID(
-                            collection_query_ids.get(collection_name, str(query_id))
-                        )
+                    # Use collection-specific query ID
+                    collection_query_id = uuid.UUID(
+                        collection_query_ids.get(collection_name, str(query_id))
+                    )
 
-                        # Execute the ablation test for this query against this collection
-                        results = ablation_tester.run_ablation_test(
-                            config=config,
-                            query_id=collection_query_id,
-                            query_text=query_text,
-                        )
+                    # Execute the ablation test for this query against this collection
+                    results = ablation_tester.run_ablation_test(
+                        config=config,
+                        query_id=collection_query_id,
+                        query_text=query_text,
+                    )
 
-                        # Store results by query ID and collection
-                        query_key = f"{query_id}_{collection_name}"
-                        combo_metrics[query_key] = {
-                            k: r.model_dump() for k, r in results.items()
-                        }
+                    # Store results by query ID and collection
+                    query_key = f"{query_id}_{collection_name}"
+                    combo_metrics[query_key] = {
+                        k: r.model_dump() for k, r in results.items()
+                    }
 
-                        # Update statistics
-                        self.experiment_stats["total_ablations"] += 1
+                    # Update statistics
+                    self.experiment_stats["total_ablations"] += 1
 
-                except Exception as e:
-                    self.logger.error(f"CRITICAL: Failed to run ablation test: {e}")
-                    sys.exit(1)  # Fail-stop immediately
 
             # Store results for this combination
             combo_key = "_".join(collection_combo)
@@ -689,42 +689,38 @@ class ExperimentRunner:
             query_text = query["text"]
             collection_query_ids = query.get("collection_query_ids", {})
 
-            try:
-                # Process each collection in the query
-                for collection_name in query["collections"]:
-                    # Skip if this collection isn't in the control group
-                    if collection_name not in control_collections:
-                        continue
+            # Process each collection in the query
+            for collection_name in query["collections"]:
+                # Skip if this collection isn't in the control group
+                if collection_name not in control_collections:
+                    continue
 
-                    # Use collection-specific query ID
-                    collection_query_id = uuid.UUID(
-                        collection_query_ids.get(collection_name, str(query_id))
-                    )
+                # Use collection-specific query ID
+                collection_query_id = uuid.UUID(
+                    collection_query_ids.get(collection_name, str(query_id))
+                )
 
-                    # Configure control test (no ablation)
-                    control_config = AblationConfig(
-                        collections_to_ablate=[],  # Empty - no ablation for control
-                        query_limit=100,
-                        include_metrics=True,
-                        include_execution_time=True,
-                        verbose=False,
-                    )
+                # Configure control test (no ablation)
+                control_config = AblationConfig(
+                    collections_to_ablate=[],  # Empty - no ablation for control
+                    query_limit=100,
+                    include_metrics=True,
+                    include_execution_time=True,
+                    verbose=False,
+                )
 
-                    # Execute the control test
-                    baseline_test = ablation_tester.test_ablation(
-                        query_id=collection_query_id,
-                        query_text=query_text,
-                        collection_name=collection_name,
-                        limit=100,
-                    )
+                # Execute the control test
+                baseline_test = ablation_tester.test_ablation(
+                    query_id=collection_query_id,
+                    query_text=query_text,
+                    collection_name=collection_name,
+                    limit=100,
+                )
 
-                    # Store results for this control query and collection
-                    query_key = f"{query_id}_{collection_name}"
-                    control_metrics[query_key] = baseline_test.model_dump()
+                # Store results for this control query and collection
+                query_key = f"{query_id}_{collection_name}"
+                control_metrics[query_key] = baseline_test.model_dump()
 
-            except Exception as e:
-                self.logger.error(f"CRITICAL: Failed to run control test: {e}")
-                sys.exit(1)  # Fail-stop immediately
 
         # Complete the round results
         round_results["impact_metrics"] = round_impact_metrics
@@ -732,36 +728,30 @@ class ExperimentRunner:
         round_results["end_time"] = datetime.now().isoformat()
 
         # Calculate round summary statistics
-        try:
-            # Extract metrics from test and control groups for comparison
-            test_f1_scores = []
-            control_f1_scores = []
+        # Extract metrics from test and control groups for comparison
+        test_f1_scores = []
+        control_f1_scores = []
 
-            # Process test metrics
-            for combo_key, combo_metrics in round_impact_metrics.items():
-                for query_key, results in combo_metrics.items():
-                    for result_key, metrics in results.items():
-                        if "_impact_on_" in result_key:
-                            test_f1_scores.append(metrics["f1_score"])
+        # Process test metrics
+        for combo_key, combo_metrics in round_impact_metrics.items():
+            for query_key, results in combo_metrics.items():
+                for result_key, metrics in results.items():
+                    if "_impact_on_" in result_key:
+                        test_f1_scores.append(metrics["f1_score"])
 
-            # Process control metrics
-            for query_key, metrics in control_metrics.items():
-                control_f1_scores.append(metrics["f1_score"])
+        # Process control metrics
+        for query_key, metrics in control_metrics.items():
+            control_f1_scores.append(metrics["f1_score"])
 
-            # Calculate summary statistics
-            round_results["summary"] = {
-                "test_count": len(test_f1_scores),
-                "control_count": len(control_f1_scores),
-                "test_mean_f1": np.mean(test_f1_scores) if test_f1_scores else 0,
-                "control_mean_f1": np.mean(control_f1_scores) if control_f1_scores else 0,
-                "test_median_f1": np.median(test_f1_scores) if test_f1_scores else 0,
-                "control_median_f1": np.median(control_f1_scores) if control_f1_scores else 0,
-            }
-        except Exception as e:
-            self.logger.error(f"Warning: Failed to calculate round summary statistics: {e}")
-            round_results["summary"] = {
-                "error": f"Failed to calculate statistics: {str(e)}"
-            }
+        # Calculate summary statistics
+        round_results["summary"] = {
+            "test_count": len(test_f1_scores),
+            "control_count": len(control_f1_scores),
+            "test_mean_f1": np.mean(test_f1_scores) if test_f1_scores else 0,
+            "control_mean_f1": np.mean(control_f1_scores) if control_f1_scores else 0,
+            "test_median_f1": np.median(test_f1_scores) if test_f1_scores else 0,
+            "control_median_f1": np.median(control_f1_scores) if control_f1_scores else 0,
+        }
 
         # Save results
         self.round_manager.store_round_results(round_results)
@@ -776,6 +766,33 @@ class ExperimentRunner:
         self.logger.info(f"=== Completed Experimental Round {round_number}/{self.rounds} ===")
 
         return True
+
+    def _store_unified_truth_data(self, ablation_tester, query_id, matching_entities):
+        """Store unified truth data for a query across all relevant collections.
+
+        Args:
+            ablation_tester: The ablation tester instance
+            query_id: The UUID for the query
+            matching_entities: Dict mapping collection names to lists of entity IDs
+
+        Returns:
+            bool: True if the operation was successful
+        """
+        self.logger.info(f"Storing unified truth data for query {query_id} across {len(matching_entities)} collections")
+
+        # Log collections and entity counts
+        for collection, entities in matching_entities.items():
+            self.logger.info(f"  - {collection}: {len(entities)} entities")
+
+        # Store the unified truth data
+        success = ablation_tester.store_unified_truth_data(query_id, matching_entities)
+
+        if success:
+            self.logger.info(f"Successfully stored unified truth data for query {query_id}")
+        else:
+            self.logger.warning(f"Failed to store unified truth data for query {query_id}")
+
+        return success
 
     def _identify_potential_related_collections(self, query_text: str, collection_name: str) -> List[str]:
         """Identify potential related collections based on the query text and collection.
@@ -879,7 +896,7 @@ class ExperimentRunner:
         """
         # Create a power set generator for test collections only
         test_power_set = PowerSetGenerator(collections=test_collections, seed=self.seed)
-        
+
         # For smaller collection sets, test all combinations
         if len(test_collections) <= 4:
             self.logger.info(f"Testing all {2**len(test_collections) - 1} combinations of test collections")
@@ -893,16 +910,16 @@ class ExperimentRunner:
                 target_count=self.combination_limit,
                 ensure_all_collections=True,
             )
-            
+
         # Always include single-collection ablations
         single_ablations = test_power_set.get_single_collection_ablations()
-        
+
         # Combine and deduplicate
         all_combinations = combinations.copy()
         for combo in single_ablations:
             if combo not in all_combinations:
                 all_combinations.append(combo)
-                
+
         self.logger.info(f"Generated {len(all_combinations)} collection combinations to test")
         return all_combinations
 
@@ -913,42 +930,42 @@ class ExperimentRunner:
             str: Path to the generated report
         """
         self.logger.info("Generating final experimental report")
-        
+
         # Get cross-round analysis from the round manager
         cross_round_report = self.round_manager.generate_cross_round_report()
-        
+
         # Create a comprehensive summary report
         report_path = os.path.join(self.output_dir, "experiment_summary.md")
-        
+
         with open(report_path, "w") as f:
             f.write("# Comprehensive Ablation Experiment Summary\n\n")
             f.write(f"Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n")
-            
+
             f.write("## Experimental Design\n\n")
             f.write(f"- Collections tested: {', '.join(self.collections)}\n")
             f.write(f"- Experimental rounds: {self.rounds}\n")
             f.write(f"- Control group percentage: {self.control_percentage * 100:.1f}%\n")
             f.write(f"- Max combinations per round: {self.combination_limit}\n\n")
-            
+
             f.write("## Experiment Statistics\n\n")
             f.write(f"- Total ablation tests: {self.experiment_stats['total_ablations']}\n")
-            
+
             # Calculate experiment duration
             if "experiment_start" in self.experiment_stats:
                 start_time = datetime.fromisoformat(self.experiment_stats["experiment_start"])
                 duration = datetime.now() - start_time
                 f.write(f"- Experiment duration: {duration}\n\n")
-            
+
             f.write("## Key Findings\n\n")
             # Add key findings summary here
             # This would typically include:
             # - Collections with highest impact on query results
             # - Most significant cross-collection relationships
             # - Statistical significance of findings
-            
+
             f.write("\n## Statistical Robustness\n\n")
             # Add information about statistical robustness from multiple rounds
-            
+
         self.logger.info(f"Generated experiment summary report: {report_path}")
         return report_path
 
@@ -959,7 +976,7 @@ class ExperimentRunner:
             List[str]: Paths to generated visualization files
         """
         self.logger.info("Generating experiment visualizations")
-        
+
         # This would create experiment-wide visualizations
         # Placeholder for now
         return []

@@ -250,17 +250,16 @@ class TestUnifiedTruthModel(unittest.TestCase):
         self.logger.info("test_get_collection_truth_data passed successfully")
 
     def test_legacy_and_unified_compatibility(self):
-        """Test compatibility between legacy and unified truth data approaches."""
-        # Generate a test query ID - use a deterministic value to avoid conflicts
-        query_id = uuid.UUID("12345678-1234-5678-1234-567812345678")
+        """Test unified truth data approaches.
 
-        # Use existing entity keys that are actually in the database
-        legacy_entities = ["test_ablationmusicactivity_1", "test_ablationmusicactivity_2"]
-        collection_name = "AblationMusicActivity"
+        Note: This test has been updated to remove legacy compatibility code
+        as we've standardized on the unified truth model.
+        """
+        # Use a new query ID to avoid collisions
+        query_id = uuid.UUID("87654321-8765-4321-8765-432187654321")
 
-        # First, ensure we have a clean slate
+        # First, ensure we have a clean slate for the query
         try:
-            # Remove any existing truth data with this query ID
             self.db.aql.execute(
                 f"""
                 FOR doc IN {self.truth_collection_name}
@@ -269,71 +268,31 @@ class TestUnifiedTruthModel(unittest.TestCase):
                 """,
                 bind_vars={"query_id": str(query_id)}
             )
-
-            # Also remove composite key entries
-            composite_key = f"{query_id}_{collection_name}"
-            if self.db.collection(self.truth_collection_name).has(composite_key):
-                self.db.collection(self.truth_collection_name).delete(composite_key)
         except Exception as e:
-            self.logger.warning(f"Error while clearing existing data: {e}")
-
-        # Store legacy truth data first
-        self.tester.store_truth_data(query_id, collection_name, legacy_entities)
-
-        # Get the data using the unified approach
-        try:
-            unified_data = self.tester.get_unified_truth_data(query_id)
-
-            # Test that we can get unified data
-            self.assertIsNotNone(unified_data, "Unified data should be created from legacy data")
-
-            if unified_data is not None:
-                self.assertIn(collection_name, unified_data, "Unified data should include the legacy collection")
-                self.assertEqual(set(unified_data[collection_name]), set(legacy_entities),
-                            "Unified data should contain legacy entities")
-        except Exception as e:
-            self.logger.warning(f"Error in first part of test: {e}")
-            # Continue with the test even if this part fails
-
-        # Now test adding a new collection directly to the unified data
-        # Use a new query ID to avoid collisions
-        new_query_id = uuid.UUID("87654321-8765-4321-8765-432187654321")
-
-        # First, ensure we have a clean slate for the new query
-        try:
-            self.db.aql.execute(
-                f"""
-                FOR doc IN {self.truth_collection_name}
-                FILTER doc.query_id == @query_id
-                REMOVE doc IN {self.truth_collection_name}
-                """,
-                bind_vars={"query_id": str(new_query_id)}
-            )
-        except Exception as e:
-            self.logger.warning(f"Error while clearing data for new query: {e}")
+            self.logger.warning(f"Error while clearing data for query: {e}")
 
         # Create new unified data with two collections
-        new_unified_data = {
+        unified_data = {
             "AblationMusicActivity": ["test_ablationmusicactivity_1", "test_ablationmusicactivity_2"],
             "AblationLocationActivity": ["test_ablationlocationactivity_1", "test_ablationlocationactivity_2"]
         }
 
-        # Store the unified data directly
-        self.tester.store_unified_truth_data(new_query_id, new_unified_data)
+        # Store the unified data
+        self.tester.store_unified_truth_data(query_id, unified_data)
 
         # Verify the data was stored correctly
-        retrieved_data = self.tester.get_unified_truth_data(new_query_id)
+        retrieved_data = self.tester.get_unified_truth_data(query_id)
         self.assertIsNotNone(retrieved_data, "Should be able to retrieve unified data")
 
         if retrieved_data is not None:
             self.assertIn("AblationMusicActivity", retrieved_data, "Music activity data should be present")
             self.assertIn("AblationLocationActivity", retrieved_data, "Location activity data should be present")
 
-        # Verify legacy access still works by using get_truth_data (which should now use get_collection_truth_data)
-        for collection in new_unified_data:
-            legacy_retrieved = self.tester.get_truth_data(new_query_id, collection)
-            self.assertEqual(set(legacy_retrieved), set(new_unified_data[collection]),
-                        f"Legacy retrieval should work for {collection}")
+            # Verify collection-specific retrieval works correctly
+            for collection in unified_data:
+                collection_data = self.tester.get_collection_truth_data(query_id, collection)
+                self.assertEqual(set(collection_data), set(unified_data[collection]),
+                            f"Collection-specific retrieval should work for {collection}")
 
         self.logger.info("test_legacy_and_unified_compatibility passed successfully")
 

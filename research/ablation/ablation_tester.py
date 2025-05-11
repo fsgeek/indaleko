@@ -177,60 +177,46 @@ class AblationTester:
 
         Returns:
             Dict[str, List[str]]: Dictionary mapping collection names to lists of matching entity IDs.
-
-        Raises:
-            RuntimeError: If no unified truth data is found for the query.
+            None if no unified truth data is found.
         """
         if not self.db:
             self.logger.error("No database connection available")
             sys.exit(1)  # Fail-stop immediately - we can't proceed without DB
 
+        # Enhanced logging to debug truth data lookups
+        self.logger.info(f"Looking up unified truth data for query ID: {query_id}")
+
         # Try to get the document by query_id
         truth_doc = self.db.collection(self.TRUTH_COLLECTION).get(str(query_id))
         if truth_doc and "matching_entities" in truth_doc:
-            self.logger.info(f"Found unified truth data for query {query_id}")
+            entity_count = sum(len(entities) for entities in truth_doc.get("matching_entities", {}).values())
+            self.logger.info(f"Found unified truth data for query {query_id} with {entity_count} total entities")
+            self.logger.info(f"Collections in truth data: {list(truth_doc.get('matching_entities', {}).keys())}")
             return truth_doc.get("matching_entities", {})
+        else:
+            self.logger.warning(f"No unified truth data found for query {query_id}")
 
-        # If no unified truth data found, try to reconstruct it from per-collection truth data
-        self.logger.info(f"No unified truth data found for query {query_id}, attempting to reconstruct")
+            # ENHANCED DEBUGGING: List all truth documents for diagnostics
+            try:
+                cursor = self.db.aql.execute(
+                    f"""
+                    FOR doc IN {self.TRUTH_COLLECTION}
+                    RETURN {{ _key: doc._key, collections: doc.collections }}
+                    """
+                )
+                truth_docs = list(cursor)
+                self.logger.info(f"Available truth documents: {len(truth_docs)}")
+                if len(truth_docs) > 0:
+                    self.logger.info(f"First 3 truth document keys: {[doc['_key'] for doc in truth_docs[:3]]}")
+            except Exception as e:
+                self.logger.warning(f"Failed to list truth documents: {e}")
 
-        # Query for all truth data with this query_id
-        result = self.db.aql.execute(
-            f"""
-            FOR doc IN {self.TRUTH_COLLECTION}
-            FILTER doc.query_id == @query_id AND doc._key != @query_id
-            RETURN doc
-            """,
-            bind_vars={"query_id": str(query_id)},
-        )
-
-        # Convert cursor to list and extract collection-specific truth data
-        collection_truth_docs = list(result)
-
-        if not collection_truth_docs:
-            self.logger.warning(f"No truth data found for query {query_id} in any collection")
             return None
-
-        # Reconstruct the unified truth data
-        unified_truth = {}
-        for doc in collection_truth_docs:
-            collection_name = doc.get("collection")
-            if collection_name:
-                matching_entities = doc.get("matching_entities", [])
-                unified_truth[collection_name] = matching_entities
-                self.logger.info(f"Found {len(matching_entities)} matching entities for collection {collection_name}")
-
-        # Store the reconstructed unified truth data for future use
-        if unified_truth:
-            self.store_unified_truth_data(query_id, unified_truth)
-            self.logger.info(f"Reconstructed and stored unified truth data for query {query_id}")
-
-        return unified_truth
 
     def get_collection_truth_data(self, query_id: uuid.UUID, collection_name: str) -> set[str]:
         """Get the ground truth data for a query specific to a collection from the unified truth data.
 
-        This method uses the unified truth model, extracting just the data for the specified collection.
+        This method extracts collection-specific truth data from the unified truth model.
 
         Args:
             query_id: The UUID of the query.
@@ -239,93 +225,17 @@ class AblationTester:
         Returns:
             Set[str]: The set of entity IDs that should match the query in this collection.
         """
-        # Try to get the unified truth data first
-        try:
-            unified_truth = self.get_unified_truth_data(query_id)
-            if unified_truth is not None and collection_name in unified_truth:
-                return set(unified_truth[collection_name])
-            elif unified_truth is not None:
-                self.logger.warning(f"No truth data for collection {collection_name} in unified truth data for query {query_id}")
-                return set()
-        except Exception as e:
-            self.logger.warning(f"Error retrieving unified truth data: {e}")
+        # Get the unified truth data
+        unified_truth = self.get_unified_truth_data(query_id)
+        if unified_truth is not None and collection_name in unified_truth:
+            return set(unified_truth[collection_name])
+        elif unified_truth is not None:
+            self.logger.warning(f"No truth data for collection {collection_name} in unified truth data for query {query_id}")
+            return set()
+        else:
+            self.logger.warning(f"No unified truth data found for query {query_id}")
+            return set()
 
-        # Fall back to the legacy per-collection truth data
-        return self.get_truth_data_legacy(query_id, collection_name)
-
-    def get_truth_data(self, query_id: uuid.UUID, collection_name: str) -> set[str]:
-        """Get the ground truth data for a query specific to a collection.
-
-        This method is a wrapper for get_collection_truth_data to maintain
-        backward compatibility. New code should use get_collection_truth_data directly.
-
-        Args:
-            query_id: The UUID of the query.
-            collection_name: The collection name to filter truth data for.
-
-        Returns:
-            Set[str]: The set of entity IDs that should match the query.
-        """
-        # DEPRECATION WARNING: Log that this method is deprecated
-        self.logger.warning("DEPRECATED: get_truth_data is deprecated in favor of get_collection_truth_data")
-
-        return self.get_collection_truth_data(query_id, collection_name)
-
-    def get_truth_data_legacy(self, query_id: uuid.UUID, collection_name: str) -> set[str]:
-        """Legacy method to get truth data using the old per-collection approach.
-
-        This method is preserved for backward compatibility.
-
-        Args:
-            query_id: The UUID of the query.
-            collection_name: The collection name to filter truth data for.
-
-        Returns:
-            Set[str]: The set of entity IDs that should match the query.
-        """
-        if not self.db:
-            self.logger.error("No database connection available")
-            sys.exit(1)  # Fail-stop immediately - we can't proceed without DB
-
-        # Create a composite key based on query_id and full collection name
-        composite_key = f"{query_id}_{collection_name}"
-
-        # Try to get the document by its composite key first (most efficient)
-        truth_doc = self.db.collection(self.TRUTH_COLLECTION).get(composite_key)
-        if truth_doc:
-            return set(truth_doc.get("matching_entities", []))
-
-        # Fallback: query by filtering if the composite key approach doesn't find a document
-        # Use the original_query_id for lookups if the composite key approach doesn't work
-        # Remove LIMIT to detect potential duplicate entries
-        result = self.db.aql.execute(
-            f"""
-            FOR doc IN {self.TRUTH_COLLECTION}
-            FILTER doc.original_query_id == @query_id AND doc.collection == @collection_name
-            RETURN doc
-            """,
-            bind_vars={"query_id": str(query_id), "collection_name": collection_name},
-        )
-
-        # Convert cursor to list to get all results
-        matching_docs = list(result)
-
-        # Check for duplicate entries
-        if len(matching_docs) > 1:
-            self.logger.error(
-                f"CRITICAL: Found {len(matching_docs)} truth data entries for the same query_id/collection combination: "
-                f"{query_id}/{collection_name}. This indicates a data integrity issue."
-            )
-            sys.exit(1)  # Fail-stop immediately - this is a critical data integrity failure
-
-        # Extract matching entities from the single result (if any)
-        if matching_docs:
-            return set(matching_docs[0].get("matching_entities", []))
-
-        # If no truth data found - this is not necessarily an error,
-        # as some queries may not have truth data for all collections
-        self.logger.info(f"No truth data found for query {query_id} in collection {collection_name}")
-        return set()
 
     def execute_query(
         self,
@@ -367,7 +277,7 @@ class AblationTester:
         search_terms = self._extract_search_terms(query, collection_name)
 
         # Get truth data for this query and collection
-        truth_data = self.get_truth_data(query_id, collection_name)
+        truth_data = self.get_collection_truth_data(query_id, collection_name)
 
         # CRITICAL FIX: Check for ablated collections - if this collection is being ablated,
         # we should get 0 results, but we should still track it against truth data
@@ -550,9 +460,9 @@ class AblationTester:
             self.logger.warning(
                 f"No unified truth data found for query {query_id}, using legacy approach"
             )
-            # Use the provided truth_data or fall back to per-collection truth
+            # If truth_data wasn't provided, try to get it from the collection
             if not truth_data:
-                truth_data = self.get_truth_data_legacy(query_id, primary_collection)
+                truth_data = self.get_collection_truth_data(query_id, primary_collection)
 
             # Build the query using legacy truth data
             aql_query = self._build_cross_collection_query(
@@ -1457,11 +1367,47 @@ class AblationTester:
                 unified_truth = self.get_unified_truth_data(query_id)
 
                 if unified_truth is None or len(unified_truth) == 0:
-                    # No truth data at all - this is a critical error
+                    # ENHANCED DEBUGGING: Try alternate ID formats
+                    self.logger.warning(f"Trying to find truth data with alternate ID formats for {query_id}")
+
+                    # Try creating a hex string version of the UUID (common format conversion issue)
+                    hex_id = str(query_id).replace('-', '')
+
+                    # Check if a document exists with the hex version of the ID
+                    alt_doc = self.db.collection(self.TRUTH_COLLECTION).get(hex_id)
+                    if alt_doc and "matching_entities" in alt_doc:
+                        self.logger.info(f"Found truth data with alternate ID format: {hex_id}")
+                        alt_truth_data = set(alt_doc.get("matching_entities", {}).get(collection_name, []))
+                        if alt_truth_data:
+                            self.logger.info(f"Using {len(alt_truth_data)} entities from alternate ID format")
+                            truth_data = alt_truth_data
+                            return self._calculate_metrics_with_truth_data(results, truth_data, collection_name, is_ablated)
+
+                    # Still no truth data found - this is a critical error
                     self.logger.error(
                         f"CRITICAL: No truth data available for query {query_id} at all. "
                         f"This indicates a fundamental data integrity issue."
                     )
+
+                    # ENHANCED: Add more diagnostic information about query IDs in the truth collection
+                    try:
+                        cursor = self.db.aql.execute(
+                            f"""
+                            FOR doc IN {self.TRUTH_COLLECTION}
+                            LIMIT 10
+                            RETURN doc._key
+                            """
+                        )
+                        keys = list(cursor)
+                        self.logger.error(f"Sample truth document keys: {keys}")
+
+                        # Also show details about this specific query ID
+                        self.logger.error(f"Query ID type: {type(query_id)}")
+                        self.logger.error(f"Query ID string: {str(query_id)}")
+                        self.logger.error(f"Query ID hex: {str(query_id).replace('-', '')}")
+                    except Exception as list_error:
+                        self.logger.error(f"Failed to list truth document keys: {list_error}")
+
                     # Follow fail-stop principles - we cannot proceed without any truth data
                     raise RuntimeError(f"Invalid Data State: No truth data available for query {query_id}")
                 else:
@@ -1477,78 +1423,23 @@ class AblationTester:
                 self.logger.error(
                     f"CRITICAL: Error retrieving unified truth data for query {query_id}: {e}"
                 )
+
+                # Enhanced diagnostic logging
+                self.logger.error(f"Query ID: {query_id}")
+                self.logger.error(f"Query ID type: {type(query_id)}")
+                self.logger.error(f"Collection name: {collection_name}")
+
                 # Follow fail-stop principles - we cannot proceed with missing truth data
                 # Scientific integrity requires accurate measurements, not fallbacks
                 # Use an exception rather than sys.exit() to provide traceback information
                 raise RuntimeError(f"Invalid Data State: No truth data available for metrics calculation for {query_id} in {collection_name}")
 
-        # Calculate true positives, false positives, and false negatives
-        true_positives = 0
-        false_positives = 0
-
-        # Extract result keys once for efficiency
-        result_keys = set(result.get("_key") for result in results)
-
-        # Calculate true positives and false positives
-        true_positives = len(result_keys.intersection(truth_data))
-        false_positives = len(result_keys - truth_data)
-        false_negatives = len(truth_data - result_keys)
-
-        # CRITICAL FIX: Handle special case for ablated collections
-        # When a collection is ablated, results should be empty
-        # and metrics should reflect that truth data is not found
-        if is_ablated:
-            self.logger.info(
-                f"Collection {collection_name} is ablated - expecting no results and all truth data as false negatives"
-            )
-            # Double-check that we don't have results when the collection is ablated
-            if results:
-                self.logger.warning(
-                    f"Found {len(results)} results for ablated collection {collection_name}! This is unexpected."
-                )
-            # For an ablated collection, all truth data should be false negatives
-            false_negatives = len(truth_data)
-            true_positives = 0
-            false_positives = 0
-
-        # Calculate precision, recall, and F1 score with detailed logging
-        if true_positives + false_positives > 0:
-            precision = true_positives / (true_positives + false_positives)
-        else:
-            precision = 0.0
-            self.logger.info(f"No true or false positives for {collection_name}, precision set to 0")
-
-        if true_positives + false_negatives > 0:
-            recall = true_positives / (true_positives + false_negatives)
-        else:
-            recall = 0.0
-            self.logger.info(f"No true positives or false negatives for {collection_name}, recall set to 0")
-
-        if precision + recall > 0:
-            f1_score = 2 * precision * recall / (precision + recall)
-        else:
-            f1_score = 0.0
-            self.logger.info(f"Precision and recall are both 0 for {collection_name}, F1 score set to 0")
-
-        # CRITICAL FIX: Log detailed metric information for debugging
-        self.logger.info(
-            f"Metrics for {collection_name}: "
-            f"true_positives={true_positives}, false_positives={false_positives}, false_negatives={false_negatives}, "
-            f"precision={precision:.4f}, recall={recall:.4f}, f1_score={f1_score:.4f}"
-        )
-
-        # Create and return ablation result
-        return AblationResult(
-            query_id=query_id,
-            ablated_collection=collection_name,
-            precision=precision,
-            recall=recall,
-            f1_score=f1_score,
-            execution_time_ms=0,  # To be filled in by the caller
-            result_count=len(results),
-            true_positives=true_positives,
-            false_positives=false_positives,
-            false_negatives=false_negatives,
+        # Use the helper method to calculate metrics
+        return self._calculate_metrics_with_truth_data(
+            results=results,
+            truth_data=truth_data,
+            collection_name=collection_name,
+            is_ablated=is_ablated
         )
 
     def test_ablation(
@@ -1864,12 +1755,6 @@ class AblationTester:
         Returns:
             bool: True if the operation was successful
         """
-        # TRACE DEBUGGING: Add a stack trace to identify the call path
-        import traceback
-        stack = traceback.extract_stack()
-        caller = stack[-2]  # Get the caller of this function
-        self.logger.info(f"TRACE: store_unified_truth_data called for {query_id} from {caller.filename}:{caller.lineno}")
-
         if not self.db:
             self.logger.error("No database connection available")
             sys.exit(1)  # Fail-stop immediately - we can't proceed without DB
@@ -1973,158 +1858,6 @@ class AblationTester:
 
         return True
 
-    def store_truth_data(self, query_id: uuid.UUID, collection_name: str, matching_entities: list[str]) -> bool:
-        """Store truth data with a composite key based on query_id and collection.
-
-        This method is preserved for backward compatibility. New code should use
-        store_unified_truth_data instead.
-
-        Args:
-            query_id: The UUID of the query.
-            collection_name: The collection name to associate the truth data with.
-            matching_entities: List of entity IDs that should match the query.
-
-        Returns:
-            bool: True if storing succeeded.
-        """
-        # TRACE DEBUGGING: Add a stack trace to identify the call path
-        import traceback
-        stack = traceback.extract_stack()
-        caller = stack[-2]  # Get the caller of this function
-        self.logger.info(f"TRACE: store_truth_data called for {query_id}/{collection_name} from {caller.filename}:{caller.lineno}")
-
-        # DEPRECATION WARNING: Log that this method is deprecated
-        self.logger.warning("DEPRECATED: store_truth_data is deprecated in favor of store_unified_truth_data")
-
-        if not self.db:
-            self.logger.error("No database connection available")
-            sys.exit(1)  # Fail-stop immediately - we can't proceed without DB
-
-        # Create a truth document with an empty list even if there are no matching entities
-        # We need this to avoid "No truth data found" errors for related collections
-        # matching_entities can be empty for related collections in cross-collection queries
-
-        # Verify that the collection exists
-        if not self.db.has_collection(collection_name):
-            self.logger.error(f"CRITICAL: Collection {collection_name} does not exist")
-            sys.exit(1)  # Fail-stop immediately
-
-        # Only verify entities if there are any to verify (empty lists are valid for related collections)
-        if matching_entities and not os.environ.get("ABLATION_SKIP_ENTITY_VALIDATION", ""):
-            # Filter out any synthetic or non-existent entities
-            verified_entities = []
-            for entity_id in matching_entities:
-                # Skip synthetic entities (starting with "synthetic_" or "control_synthetic_")
-                if entity_id.startswith(("synthetic_", "control_synthetic_")):
-                    self.logger.warning(f"Skipping synthetic entity {entity_id} for collection {collection_name}")
-                    continue
-
-                # Check if entity exists in collection
-                # Check if entity exists by its key
-                entity_exists = self.db.collection(collection_name).has(entity_id)
-                if entity_exists:
-                    verified_entities.append(entity_id)
-                else:
-                    self.logger.warning(
-                        f"Entity {entity_id} not found in collection {collection_name}, excluding from truth data"
-                    )
-
-            matching_entities = verified_entities
-
-            if not matching_entities:
-                self.logger.info(f"All entities were invalid; storing empty truth data for query {query_id} in collection {collection_name}")
-                # Continue with empty list - don't return early
-
-        # Ensure the Truth Collection exists - create it if needed
-        if not self.db.has_collection(self.TRUTH_COLLECTION):
-            self.db.create_collection(self.TRUTH_COLLECTION)
-            self.logger.info(f"Created truth data collection {self.TRUTH_COLLECTION}")
-
-        # Create a composite key based on query ID and full collection name to ensure uniqueness
-        # This ensures different collections can have different truth data for the same query
-        composite_key = f"{query_id}_{collection_name}"
-
-        # Create the truth document
-        # Use composite key for the document key to ensure uniqueness
-        # But keep the query_id as a valid UUID string for compatibility with data sanity checker
-        truth_doc = {
-            "_key": composite_key,
-            "query_id": str(query_id),  # Store as a valid UUID string
-            "composite_key": composite_key,  # Store the composite key in a separate field for reference
-            "matching_entities": matching_entities,
-            "collection": collection_name,
-        }
-
-        # Get the truth collection
-        collection = self.db.collection(self.TRUTH_COLLECTION)
-
-        # Check if document with this composite key already exists and store/update it
-        existing = collection.get(composite_key)
-        if existing:
-            # Compare existing document with new data to check for logic bugs
-            existing_entities = set(existing.get("matching_entities", []))
-            new_entities = set(matching_entities)
-
-            if existing_entities != new_entities:
-                # For empty truth data (new or existing), we don't consider this a real conflict
-                # This happens with cross-collection queries where we create empty placeholders
-                if not existing_entities or not new_entities:
-                    # One of the sets is empty - this is likely from cross-collection placeholders
-                    # Use the non-empty set if either is empty
-                    if not existing_entities and new_entities:
-                        # Update the document with the new entities
-                        collection.update({"_key": composite_key, "matching_entities": list(new_entities)})
-                        self.logger.info(f"Updated empty truth data with {len(new_entities)} entities for {query_id}/{collection_name}")
-                        return True
-                    elif existing_entities and not new_entities:
-                        # Keep the existing data
-                        self.logger.info(f"Retaining existing truth data (new data empty) for {query_id}/{collection_name}")
-                        return True
-                else:
-                    # Different matching entities for same query_id/collection - potential logic bug
-                    self.logger.warning(
-                        f"Found different truth data for same query/collection: {query_id}/{collection_name}"
-                    )
-                    self.logger.warning(f"Existing: {len(existing_entities)} entities, New: {len(new_entities)} entities")
-                    self.logger.warning(f"Difference: {len(existing_entities.symmetric_difference(new_entities))} entities")
-
-                    # TRACE DEBUGGING: Print more details about the conflicting data
-                    self.logger.warning(f"Existing entities: {existing_entities}")
-                    self.logger.warning(f"New entities: {new_entities}")
-
-                    # Print full stack trace to identify the call path that's causing conflicts
-                    self.logger.warning("Call stack trace:")
-                    for frame in stack:
-                        self.logger.warning(f"  File {frame.filename}, line {frame.lineno}, in {frame.name}")
-
-                    # CHANGED: Do NOT update existing truth data to ensure scientific consistency
-                    # This ensures that once truth data is set for a query/collection, it remains stable
-                    self.logger.info(f"Retaining existing truth data for query {query_id} in collection {collection_name}")
-                    return True
-            else:
-                # Same data - benign duplicate, might be from resuming a previous run
-                self.logger.info(f"Same truth data already exists for query {query_id} in collection {collection_name}")
-        else:
-            # Insert new document
-            collection.insert(truth_doc)
-            self.logger.info(f"Recorded truth data for query {query_id} in collection {collection_name}")
-
-        # IMPORTANT: For backward compatibility, also store in the unified truth format
-        # This will help with migration
-        try:
-            # Try to get existing unified truth data
-            unified_truth = self.get_unified_truth_data(query_id)
-            # If it exists, update it with this collection's data
-            if unified_truth is not None:
-                unified_truth[collection_name] = matching_entities
-                self.store_unified_truth_data(query_id, unified_truth)
-            else:
-                # Create new unified truth data with just this collection
-                self.store_unified_truth_data(query_id, {collection_name: matching_entities})
-        except Exception as e:
-            self.logger.warning(f"Error updating unified truth data: {e}")
-
-        return True
 
     def cleanup(self) -> None:
         """Clean up resources used by the ablation tester.
@@ -2150,3 +1883,96 @@ class AblationTester:
         # Clear backup data
         if hasattr(self, "backup_data"):
             self.backup_data.clear()
+
+    def _calculate_metrics_with_truth_data(
+        self,
+        results: list[dict[str, Any]],
+        truth_data: set[str],
+        collection_name: str,
+        is_ablated: bool,
+    ) -> AblationResult:
+        """Helper method to calculate metrics with provided truth data.
+
+        Args:
+            results: The search results.
+            truth_data: The set of entity IDs that should match the query.
+            collection_name: The name of the collection being tested.
+            is_ablated: Whether the collection is currently ablated.
+
+        Returns:
+            AblationResult: The calculated metrics.
+        """
+        # Extract result keys once for efficiency
+        result_keys = set(result.get("_key") for result in results)
+
+        # Calculate true positives and false positives
+        true_positives = len(result_keys.intersection(truth_data))
+        false_positives = len(result_keys - truth_data)
+        false_negatives = len(truth_data - result_keys)
+
+        # CRITICAL FIX: Handle special case for ablated collections
+        # When a collection is ablated, results should be empty
+        # and metrics should reflect that truth data is not found
+        if is_ablated:
+            self.logger.info(
+                f"Collection {collection_name} is ablated - expecting no results and all truth data as false negatives"
+            )
+            # Double-check that we don't have results when the collection is ablated
+            if results:
+                self.logger.warning(
+                    f"Found {len(results)} results for ablated collection {collection_name}! This is unexpected."
+                )
+            # For an ablated collection, all truth data should be false negatives
+            false_negatives = len(truth_data)
+            true_positives = 0
+            false_positives = 0
+
+        # Calculate precision, recall, and F1 score with detailed logging
+        if true_positives + false_positives > 0:
+            precision = true_positives / (true_positives + false_positives)
+        else:
+            precision = 0.0
+            self.logger.info(f"No true or false positives for {collection_name}, precision set to 0")
+
+        if true_positives + false_negatives > 0:
+            recall = true_positives / (true_positives + false_negatives)
+        else:
+            recall = 0.0
+            self.logger.info(f"No true positives or false negatives for {collection_name}, recall set to 0")
+
+        if precision + recall > 0:
+            f1_score = 2 * precision * recall / (precision + recall)
+        else:
+            f1_score = 0.0
+            self.logger.info(f"Precision and recall are both 0 for {collection_name}, F1 score set to 0")
+
+        # Calculate impact
+        # Impact is 0 if the collection is not ablated, representing the baseline
+        # For ablated collections, impact is 1 - F1 (higher impact means more vital collection)
+        impact = 0.0
+        if is_ablated:
+            impact = 1.0 - f1_score
+
+        # Log detailed metric information for debugging
+        self.logger.info(
+            f"Metrics for {collection_name}: "
+            f"true_positives={true_positives}, false_positives={false_positives}, false_negatives={false_negatives}, "
+            f"precision={precision:.4f}, recall={recall:.4f}, f1_score={f1_score:.4f}"
+        )
+
+        # Create result object
+        result = AblationResult(
+            collection=collection_name,
+            result_count=len(results),
+            true_positives=true_positives,
+            false_positives=false_positives,
+            false_negatives=false_negatives,
+            precision=precision,
+            recall=recall,
+            f1_score=f1_score,
+            impact=impact,
+            is_ablated=is_ablated,
+            metadata={},
+        )
+
+        return result
