@@ -262,6 +262,7 @@ class AblationTester:
             return set()
         else:
             # CRITICAL FIX: Try alternate approaches to find truth data
+            print(f"DEBUGFIX: Trying alternative approaches for query {query_id}")
             self.logger.warning(f"No unified truth data found for query {query_id}, trying alternative approaches")
 
             # Try searching by query ID as a string
