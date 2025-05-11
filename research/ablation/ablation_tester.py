@@ -233,7 +233,14 @@ class AblationTester:
 
         if unified_truth is not None and collection_name in unified_truth:
             truth_count = len(unified_truth[collection_name])
-            self.logger.info(f"Found {truth_count} truth entities for {collection_name} in unified truth data for query {query_id}")
+
+            # CRITICAL FIX: Handle empty lists properly
+            # An empty list of truth entities is valid - it means we expect no matches
+            # This shouldn't trigger a warning since it's a legitimate case
+            if truth_count == 0:
+                self.logger.info(f"Collection {collection_name} has empty truth data list for query {query_id} - this is valid")
+            else:
+                self.logger.info(f"Found {truth_count} truth entities for {collection_name} in unified truth data for query {query_id}")
 
             # Return as a set for efficient intersection/difference operations
             return set(unified_truth[collection_name])
@@ -1429,10 +1436,16 @@ class AblationTester:
         self.logger.info(f"Calculating metrics for {collection_name} (ablated: {is_ablated})")
         self.logger.info(f"Truth data size: {len(truth_data) if truth_data else 0}, Results size: {len(results)}")
 
-        # If no truth data, try to see if there's unified truth data available for other collections
-        # This helps distinguish between "no truth data at all" (a real error) vs.
-        # "this collection isn't expected to match anything" (a valid scientific case)
-        if not truth_data:
+        # CRITICAL FIX: Empty set is different from no truth data at all
+        # An empty set means "no matches expected" which is valid
+        # None or failure to retrieve data is the error case we need to handle
+        # The check "not truth_data" is true for both empty sets and None
+        # So we need to check explicitly for an empty set vs None/failure
+        if truth_data is not None and len(truth_data) == 0:
+            # This is a valid case - the collection exists in truth data but has no expected matches
+            self.logger.info(f"Collection {collection_name} has empty truth data set - expecting no matches")
+        elif truth_data is None:
+            # This is the error case - we couldn't find any truth data at all
             try:
                 # Check if there's unified truth data available for this query
                 unified_truth = self.get_unified_truth_data(query_id)
