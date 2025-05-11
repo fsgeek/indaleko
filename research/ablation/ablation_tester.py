@@ -1857,11 +1857,23 @@ class AblationTester:
         # CRITICAL FIX: Enhanced logging for debugging truth data storage
         self.logger.info(f"Storing unified truth data for query ID: {query_id}")
         self.logger.info(f"Collections with truth data: {list(unified_matching_entities.keys())}")
-        for collection, entities in unified_matching_entities.items():
-            self.logger.info(f"Collection {collection} has {len(entities)} entities")
-            if len(entities) > 0:
-                sample = entities[:3] if len(entities) > 3 else entities
-                self.logger.info(f"Sample entities: {sample}")
+
+        # Count total entities across all collections
+        total_entities = sum(len(entities) for entities in unified_matching_entities.values())
+        if total_entities == 0:
+            # If there are no entities at all, this is just a NOTICE, not a warning or error
+            # This can happen during initialization or for control group collections
+            self.logger.info(f"No entities in any collection for query {query_id} - this is valid during initialization")
+        else:
+            # Log details of entities when we have some
+            for collection, entities in unified_matching_entities.items():
+                self.logger.info(f"Collection {collection} has {len(entities)} entities")
+                if len(entities) > 0:
+                    sample = entities[:3] if len(entities) > 3 else entities
+                    self.logger.info(f"Sample entities: {sample}")
+                else:
+                    # Empty list for a collection is valid - it means we expect no matches
+                    self.logger.info(f"Collection {collection} has empty entity list - this is valid")
 
         # Verify entities if there are any to verify
         if not os.environ.get("ABLATION_SKIP_ENTITY_VALIDATION", ""):
@@ -1903,11 +1915,13 @@ class AblationTester:
             # Replace with verified entities
             unified_matching_entities = verified_entities
 
-        # If after verification we have no entities in any collections, log a warning
+        # If after verification we have no entities in any collections, log a message
         total_entities = sum(len(entities) for entities in unified_matching_entities.values())
         if total_entities == 0:
-            self.logger.warning(
-                f"No valid entities found in any collection for query {query_id}. This may cause issues during evaluation."
+            # CRITICAL FIX: This can be valid during initialization or for control group collections
+            # Changed from warning to info to avoid flooding logs with non-issues
+            self.logger.info(
+                f"No entities in any collection for query {query_id} - this is valid during initialization or for control groups"
             )
             # Continue anyway - it's valid to have a query with no expected matches
 
