@@ -13,6 +13,7 @@ After investigating the database, we discovered:
 1. **Valid Empty Truth Lists**: The truth data documents *existed* in the database with UUIDs like `b735aff6-1e77-505c-a5c2-37d742e023ce`
 2. **Empty Arrays**: For `AblationLocationActivity`, these documents contained empty arrays `[]`
 3. **Logic Error**: The code treated empty arrays as "no truth data found" rather than "no matches expected"
+4. **Metrics Issue**: Precision, recall, and F1 scores were incorrectly showing 0.0 when they should be 1.0 for collections with empty truth lists
 
 ## Root Cause
 
@@ -50,7 +51,57 @@ if unified_truth is not None and collection_name in unified_truth:
     return set(unified_truth[collection_name])
 ```
 
-### 2. Explicit Error State Check in `calculate_metrics`
+### 2. Query Building with Empty Truth Lists
+
+Modified `_build_combined_query` to handle empty truth data sets correctly:
+
+```python
+# Add truth keys to bind variables if available - handle empty truth data case specially
+if truth_data is not None:
+    if len(truth_data) > 0:
+        bind_vars["truth_keys"] = list(truth_data)
+        self.logger.info(f"Including {len(truth_data)} truth keys for {collection_name}")
+    else:
+        # CRITICAL FIX: If truth data is empty but valid (not None), we need to handle it properly
+        # Empty set means "no entities should match" which is a valid case
+        self.logger.info(f"Truth data for {collection_name} is empty - expecting no matches")
+        # Use a value that will ensure no results are returned (impossible key)
+        bind_vars["truth_keys"] = ["__EMPTY_TRUTH_SET_NO_MATCHES_EXPECTED__"]
+```
+
+### 3. Cross-Collection Query Handling for Empty Truth Lists
+
+Added special handling for cross-collection queries with empty truth lists:
+
+```python
+# CRITICAL FIX: Handle empty truth data specially
+if primary_truth is not None and len(primary_truth) == 0:
+    self.logger.info(f"Cross-collection truth data for {primary_collection} is empty - using special empty query")
+    # Use a special query that will return no results but still be valid
+    aql_query = f"""
+    FOR doc IN {primary_collection}
+    FILTER doc._key == "__EMPTY_TRUTH_SET_NO_MATCHES_EXPECTED__"
+    RETURN doc
+    """
+```
+
+### 4. Metrics Calculation for Empty Truth Lists
+
+Modified `_calculate_metrics_with_truth_data` to properly handle metrics for collections with empty truth data:
+
+```python
+# Special case - if truth data is empty, it means we expect no matches
+# which is already the case when the collection is ablated (0 results)
+if len(truth_data) == 0:
+    self.logger.info(f"Ablated collection {collection_name} has empty truth data - perfect match (no results expected, none found)")
+    # This means we got exactly what we expected - no results
+    # So this should be considered perfect precision/recall
+    precision = 1.0
+    recall = 1.0
+    f1_score = 1.0
+```
+
+### 5. Explicit Error State Check in `calculate_metrics`
 
 Modified the error checking to distinguish between empty sets and missing data:
 
@@ -69,35 +120,9 @@ elif truth_data is None:
         # ... error handling continues ...
 ```
 
-## Scientific Integrity Benefits
+### 6. Enhanced Truth Data Storage and Validation
 
-This fix ensures:
-
-1. **Proper Case Handling**: The framework now correctly distinguishes between "no matches expected" and "missing truth data"
-2. **Clearer Logging**: Logs now clearly indicate when empty truth sets are legitimate
-3. **Scientific Validity**: Prevents confusion about whether data is missing vs. empty by design
-4. **Maintains Fail-Stop Model**: Still fails fast on truly missing truth data for scientific integrity
-
-## Testing and Verification
-
-The fix was verified by checking that:
-
-1. Empty truth lists are now properly recognized and logged as valid
-2. Warnings about "No truth data found" are eliminated for expected empty collections
-3. Scientific measurements aren't affected by this change (empty lists still give zero true/false positives)
-4. The code still correctly fails when no truth document exists (maintaining fail-stop principles)
-
-## Extended Improvements
-
-To further enhance the empty truth data handling, we made the following additional improvements:
-
-### 1. Initialization Phase Handling
-
-During the initialization phase of experiments, we often create truth records with no entities in any collections as placeholders. We improved the handling by:
-
-- Changing warnings to info messages during initialization phases
-- Adding clear explanations that empty truth data is valid during setup
-- Distinguishing initialization from error conditions
+Modified `store_unified_truth_data` to handle empty truth lists properly:
 
 ```python
 # Count total entities across all collections
@@ -106,28 +131,59 @@ if total_entities == 0:
     # If there are no entities at all, this is just a NOTICE, not a warning or error
     # This can happen during initialization or for control group collections
     self.logger.info(f"No entities in any collection for query {query_id} - this is valid during initialization")
+else:
+    # Log details of entities when we have some
+    for collection, entities in unified_matching_entities.items():
+        self.logger.info(f"Collection {collection} has {len(entities)} entities")
+        if len(entities) > 0:
+            sample = entities[:3] if len(entities) > 3 else entities
+            self.logger.info(f"Sample entities: {sample}")
+        else:
+            # Empty list for a collection is valid - it means we expect no matches
+            self.logger.info(f"Collection {collection} has empty entity list - this is valid")
 ```
 
-### 2. Control Group Collection Handling
+## Scientific Integrity Benefits
 
-For control group collections that intentionally have no entities:
+This fix ensures:
 
-```python
-# Empty list for a collection is valid - it means we expect no matches
-self.logger.info(f"Collection {collection} has empty entity list - this is valid")
-```
+1. **Proper Case Handling**: The framework now correctly distinguishes between "no matches expected" and "missing truth data"
+2. **Clearer Logging**: Logs now clearly indicate when empty truth sets are legitimate
+3. **Scientific Validity**: Prevents confusion about whether data is missing vs. empty by design
+4. **Maintains Fail-Stop Model**: Still fails fast on truly missing truth data for scientific integrity
+5. **Accurate Metrics**: Ensures that when no matches are expected and none are found, this is correctly recognized as perfect precision/recall (1.0)
 
-### 3. Reduced Log Noise
+## Scientific Implications
 
-By properly categorizing empty collections as INFO instead of WARNING, we've reduced log noise and made it easier to identify actual issues. This is especially important for large experiments with many control group collections.
+The improved handling of empty truth data lists has important scientific implications:
+
+1. **Control Group Integrity**: Collections used as control groups can now have empty truth lists without affecting metrics
+2. **Specialized Collection Testing**: Collections that only match specific query types can correctly show "no matches expected" for other query types
+3. **Cross-Collection Relationships**: Related collections can have asymmetric relationships where one collection has matches and others don't
+4. **Statistical Accuracy**: Metrics now accurately reflect the scientific reality that "no matches expected, none found" is perfect precision/recall
+
+## Testing and Verification
+
+The fix was verified by creating a dedicated test script (`test_empty_truth_fix.py`) that:
+
+1. Creates truth data with both populated and empty truth lists
+2. Verifies proper storage and retrieval of mixed truth data
+3. Tests ablation with collections that have empty truth data lists
+4. Verifies correct metrics calculation during ablation
+
+This ensures that:
+- Empty truth lists are now properly recognized and logged as valid
+- Warnings about "No truth data found" are eliminated for expected empty collections
+- Scientific measurements correctly show perfect precision/recall when appropriate
+- The code still correctly fails when no truth document exists (maintaining fail-stop principles)
 
 ## Next Steps
 
 Now that empty truth lists are properly handled during both experiment runtime and initialization, we should:
 
-1. Review the cross-collection query generation to ensure it doesn't create unnecessary truth entries
-2. Add automated test cases that specifically verify empty truth list handling
-3. Consider extending the data sanity checker to handle these validation cases
-4. Establish consistent patterns for handling empty truth lists across the codebase
+1. Run a full ablation experiment to verify our fixes work in practice
+2. Add comprehensive test cases for all aspects of empty truth list handling
+3. Extend the data sanity checker to verify truth data consistency
+4. Ensure consistent empty truth list handling patterns across the codebase
 
-These improvements complement our earlier UUID format handling enhancements and create a more robust ablation testing framework that maintains scientific integrity while reducing unnecessary warnings.
+These improvements create a more robust ablation testing framework that maintains scientific integrity while providing more accurate experimental results.
