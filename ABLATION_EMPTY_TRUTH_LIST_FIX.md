@@ -87,12 +87,47 @@ The fix was verified by checking that:
 3. Scientific measurements aren't affected by this change (empty lists still give zero true/false positives)
 4. The code still correctly fails when no truth document exists (maintaining fail-stop principles)
 
+## Extended Improvements
+
+To further enhance the empty truth data handling, we made the following additional improvements:
+
+### 1. Initialization Phase Handling
+
+During the initialization phase of experiments, we often create truth records with no entities in any collections as placeholders. We improved the handling by:
+
+- Changing warnings to info messages during initialization phases
+- Adding clear explanations that empty truth data is valid during setup
+- Distinguishing initialization from error conditions
+
+```python
+# Count total entities across all collections
+total_entities = sum(len(entities) for entities in unified_matching_entities.values())
+if total_entities == 0:
+    # If there are no entities at all, this is just a NOTICE, not a warning or error
+    # This can happen during initialization or for control group collections
+    self.logger.info(f"No entities in any collection for query {query_id} - this is valid during initialization")
+```
+
+### 2. Control Group Collection Handling
+
+For control group collections that intentionally have no entities:
+
+```python
+# Empty list for a collection is valid - it means we expect no matches
+self.logger.info(f"Collection {collection} has empty entity list - this is valid")
+```
+
+### 3. Reduced Log Noise
+
+By properly categorizing empty collections as INFO instead of WARNING, we've reduced log noise and made it easier to identify actual issues. This is especially important for large experiments with many control group collections.
+
 ## Next Steps
 
-Now that empty truth lists are properly handled, we should:
+Now that empty truth lists are properly handled during both experiment runtime and initialization, we should:
 
 1. Review the cross-collection query generation to ensure it doesn't create unnecessary truth entries
-2. Consider adding explicit documentation about the distinction between empty and missing truth data
-3. Establish consistent patterns for handling empty truth lists across the codebase
+2. Add automated test cases that specifically verify empty truth list handling
+3. Consider extending the data sanity checker to handle these validation cases
+4. Establish consistent patterns for handling empty truth lists across the codebase
 
-This fix complements our earlier UUID format handling improvements and creates a more robust ablation testing framework.
+These improvements complement our earlier UUID format handling enhancements and create a more robust ablation testing framework that maintains scientific integrity while reducing unnecessary warnings.
