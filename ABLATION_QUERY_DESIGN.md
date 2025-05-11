@@ -1,216 +1,281 @@
-# Ablation Query Design
+# Ablation Query and Truth Data Design
 
-## Overview
+## Current Implementation Issues
 
-This document outlines the design for implementing an authentic ablation testing framework that integrates with Indaleko's existing query pipeline. The framework will measure the real impact of removing specific activity data collections on search precision and recall without relying on arbitrary simulation factors.
+The ablation framework currently has several issues with query truth data generation and collection relationships:
 
-## Current Challenges
+1. **Collection Independence**: Each collection is treated independently, with separate truth data per collection, leading to "No truth data found" errors.
 
-The current ablation testing implementation has several limitations:
+2. **Update Syntax Error**: The `collection.update()` method is being called incorrectly:
+   ```python
+   # Incorrect
+   collection.update(composite_key, {"matching_entities": list(new_entities)})
 
-1. **Truth-based Querying**: The current implementation directly queries using document keys from truth data, which doesn't accurately simulate how ablation affects real searches.
-2. **Artificial Impact Factors**: Using arbitrary factors to simulate the impact of ablation undermines scientific validity.
-3. **Disconnection from Query Pipeline**: The implementation doesn't leverage Indaleko's sophisticated query translation and execution pipeline.
+   # Correct
+   collection.update({"_key": composite_key, "matching_entities": list(new_entities)})
+   ```
 
-## Proposed Solution: Query Pipeline Integration
+3. **Missing Truth Data**: For cross-collection queries, errors appear because truth data is only created for the primary collection but not for related collections:
+   ```
+   WARNING: No truth data found for query 5f00f22a-ffe0-5647-aa7c-eac103c643e3 in collection AblationLocationActivity
+   ```
 
-We will adapt Indaleko's existing query pipeline to support ablation testing with the following approach:
+4. **Model Mismatch**: The current collection-based model doesn't align with Indaleko's conceptual filtering model, where activity data acts as filters on a base collection (Objects).
 
-### 1. Query Pipeline Adaptation
+## Flawed Approach: Collection-Specific Truth Data
 
-Create a simplified `AblationQueryPipeline` class that adapts key components from the CLI query pipeline:
+The current implementation has a fundamental architectural issue: **truth data is fragmented across collection types** rather than being defined once per query. This leads to several problems:
+
+1. **Missing Truth Data**: Many queries report "No truth data found" for specific collections, causing the framework to fail
+2. **Inconsistent Metrics**: The same query yields different truth sets depending on which collection is being queried
+3. **Architectural Complexity**: The code has to maintain separate truth sets per collection, complicating the system
+4. **Scientific Validity Issues**: Comparing ablated results to different truth sets per collection undermines the experiment's validity
+
+## Core Design Principle: Unified Truth Model
+
+The key insight is that **truth is defined per query, not per context/filter/collection**. Each query has one canonical intent represented by a single truth set.
+
+**Why This Is The Correct Approach**:
+
+1. **Scientific Validity**: In a scientific experiment, the control group must be consistent
+2. **Conceptual Accuracy**: The truth represents "what documents should match this query's intent"
+3. **Simplified Logic**: No need to maintain separate truth data per collection
+4. **Fail-Stop Safety**: No risk of missing truth data errors
+
+## Implementation Changes
+
+### 1. Single Truth Set Storage
 
 ```python
-class AblationQueryPipeline:
-    """Pipeline for executing queries with selective collection ablation."""
-    
-    def __init__(self, db_config):
-        """Initialize the ablation query pipeline."""
-        self.db_config = db_config
-        self.nl_parser = EnhancedNLParser()
-        self.query_translator = AQLTranslator()
-        self.query_executor = AQLQueryExecutor()
-        
-    def execute_query(self, query_text, ablated_collections=None):
-        """Execute a query with specified collections ablated."""
-        if ablated_collections is None:
-            ablated_collections = []
-            
-        # 1. Parse the natural language query
-        parsed_query = self.nl_parser.parse(query=query_text)
-        
-        # 2. Filter out ablated collections from available categories
-        collection_categories = [
-            entity.collection for entity in parsed_query.Categories.category_map
-            if entity.collection not in ablated_collections
-        ]
-        
-        # 3. Map entities and get collection metadata (excluding ablated collections)
-        entity_mappings = self.map_entities(parsed_query.Entities)
-        collection_metadata = self.get_collection_metadata(collection_categories)
-        
-        # 4. Get indices for available collections
-        indices = self._get_indices(collection_categories)
-        
-        # 5. Create structured query for available collections
-        structured_query = StructuredQuery(
-            original_query=query_text,
-            intent=parsed_query.Intent.intent,
-            entities=entity_mappings,
-            db_info=collection_metadata,
-            db_indices=indices,
-        )
-        
-        # 6. Translate to AQL
-        query_data = TranslatorInput(
-            Query=structured_query,
-            Connector=self.llm_connector,
-        )
-        translated_query = self.query_translator.translate(query_data)
-        
-        # 7. Execute the query
-        results = self.query_executor.execute(
-            translated_query.aql_query,
-            self.db_config,
-            bind_vars=translated_query.bind_vars,
-        )
-        
-        return {
-            "results": results,
-            "parsed_query": parsed_query,
-            "translated_query": translated_query,
-            "collection_categories": collection_categories
-        }
+# OLD approach (problematic)
+def store_truth_data(self, query_id: uuid.UUID, collection_name: str, matching_entities: list[str]) -> bool:
+    # Creates different truth sets per collection
+    composite_key = f"{query_id}_{collection_name}"
+    truth_doc = {
+        "_key": composite_key,
+        "query_id": str(query_id),
+        "matching_entities": matching_entities,
+        "collection": collection_name,
+    }
+    # ...store with composite key...
+
+# NEW approach (unified truth)
+def store_truth_data(self, query_id: uuid.UUID, matching_entities: dict[str, list[str]]) -> bool:
+    # One truth set per query, containing entities from all collections
+    truth_doc = {
+        "_key": str(query_id),
+        "query_id": str(query_id),
+        "matching_entities": matching_entities,  # Dict mapping collection to entities
+        "collections": list(matching_entities.keys()),
+    }
+    # ...store with query_id as key...
 ```
 
-### 2. Ablation Testing Process
-
-Update the `AblationTester` class to utilize this pipeline:
+### 2. Unified Truth Retrieval
 
 ```python
-def test_ablation(self, query_id: uuid.UUID, query_text: str, target_collection: str):
-    """Test the impact of ablating collections on a specific query.
-    
-    Args:
-        query_id: The UUID of the query
-        query_text: The natural language query text
-        target_collection: The collection to evaluate results against
-        
-    Returns:
-        AblationResult object with metrics
-    """
-    # 1. Get truth data for evaluation
-    truth_data = self.get_truth_data(query_id, target_collection)
-    
-    # 2. Run baseline query with all collections available
-    baseline_results = self.query_pipeline.execute_query(query_text)
-    baseline_metrics = self._calculate_metrics(
-        baseline_results["results"], 
-        truth_data,
-        target_collection
-    )
-    
-    # 3. Run queries with each collection ablated
-    ablation_results = {}
+# OLD approach (problematic)
+def get_truth_data(self, query_id: uuid.UUID, collection_name: str) -> set[str]:
+    # Tries to get truth data specific to a collection
+    composite_key = f"{query_id}_{collection_name}"
+    truth_doc = self.db.collection(self.TRUTH_COLLECTION).get(composite_key)
+    # ...fallback queries and error handling...
+
+# NEW approach (unified truth)
+def get_truth_data(self, query_id: uuid.UUID) -> dict[str, set[str]]:
+    # Gets the entire truth set for the query across all collections
+    truth_doc = self.db.collection(self.TRUTH_COLLECTION).get(str(query_id))
+    if not truth_doc:
+        raise RuntimeError(f"No truth data found for query {query_id}")
+    return {coll: set(entities) for coll, entities in truth_doc.get("matching_entities", {}).items()}
+```
+
+### 3. Metrics Calculation Against Canonical Truth
+
+```python
+# OLD approach (problematic)
+def calculate_metrics(self, query_id: uuid.UUID, results: list[dict], collection_name: str) -> AblationResult:
+    # Gets truth specific to a collection
+    truth_data = self.get_truth_data(query_id, collection_name)
+    if not truth_data:
+        # Fails if there's no truth for this specific collection
+        raise RuntimeError(f"No truth data available for {query_id} in {collection_name}")
+    # ...calculate metrics...
+
+# NEW approach (unified truth)
+def calculate_metrics(self, query_id: uuid.UUID, results: list[dict], collection_name: str) -> AblationResult:
+    # Gets unified truth data containing all collections
+    all_truth_data = self.get_truth_data(query_id)
+    # Use the relevant collection's truth from the unified set
+    collection_truth = all_truth_data.get(collection_name, set())
+
+    # Special case: if collection has empty truth data and is not being ablated,
+    # this indicates it's a secondary collection that shouldn't match results
+    if not collection_truth and not self.ablated_collections.get(collection_name, False):
+        self.logger.info(f"Collection {collection_name} has no expected matches for query {query_id}")
+
+    # ...calculate metrics using collection_truth...
+```
+
+### 4. Truth Generation Logic
+
+The biggest change is in how truth data is generated:
+
+```python
+# NEW truth generation approach
+def generate_query_truth_data(self, query_id: uuid.UUID, query_text: str) -> bool:
+    """Generate unified truth data for a query across all collections."""
+    # Run the query against each collection with full context (no ablation)
+    matching_entities = {}
+
     for collection in self.collections_to_test:
-        if collection != target_collection:
-            # Run query with this collection ablated
-            results = self.query_pipeline.execute_query(
-                query_text, 
-                ablated_collections=[collection]
-            )
-            
-            # Calculate metrics
-            metrics = self._calculate_metrics(
-                results["results"],
-                truth_data,
-                target_collection
-            )
-            
-            # Store results
-            impact_key = f"{collection}_impact_on_{target_collection}"
-            ablation_results[impact_key] = {
-                "metrics": metrics,
-                "query_info": {
-                    "aql_query": results["translated_query"].aql_query,
-                    "bind_vars": results["translated_query"].bind_vars,
-                    "collections_used": results["collection_categories"]
-                }
-            }
-    
-    return {
-        "baseline": baseline_metrics,
-        "ablation_results": ablation_results
-    }
-```
+        # Execute query with all filters enabled
+        results = self.execute_full_context_query(query_text, collection)
+        # Store matching entities for this collection
+        matching_entities[collection] = [doc["_key"] for doc in results]
 
-### 3. Metric Calculation
-
-Calculate precision, recall, and F1 score based on actual query results compared to truth data:
-
-```python
-def _calculate_metrics(self, results, truth_data, collection_name):
-    """Calculate precision, recall and F1 score for search results.
-    
-    Args:
-        results: The search results from query execution
-        truth_data: Set of document keys that should match
-        collection_name: The collection being evaluated
-        
-    Returns:
-        Dictionary with precision, recall and F1 score
-    """
-    # Extract document keys from results
-    result_keys = set()
-    for doc in results:
-        if "_key" in doc:
-            result_keys.add(doc["_key"])
-    
-    # Calculate true positives, false positives, and false negatives
-    true_positives = len(result_keys.intersection(truth_data))
-    false_positives = len(result_keys - truth_data)
-    false_negatives = len(truth_data - result_keys)
-    
-    # Calculate precision, recall, and F1 score
-    precision = true_positives / (true_positives + false_positives) if true_positives + false_positives > 0 else 0
-    recall = true_positives / (true_positives + false_negatives) if true_positives + false_negatives > 0 else 0
-    f1_score = 2 * precision * recall / (precision + recall) if precision + recall > 0 else 0
-    
-    return {
-        "precision": precision,
-        "recall": recall,
-        "f1_score": f1_score,
-        "true_positives": true_positives,
-        "false_positives": false_positives,
-        "false_negatives": false_negatives,
-        "impact": 1.0 - f1_score  # Impact is reduction in F1 score
-    }
+    # Store unified truth data with all collections in one document
+    return self.store_truth_data(query_id, matching_entities)
 ```
 
 ## Benefits of This Approach
 
-1. **Authentic Impact Measurement**: The impact of ablation is measured based on real changes to query results, not arbitrary simulation factors.
-
-2. **Integration with Existing Pipeline**: Leverages Indaleko's sophisticated query translation and execution pipeline.
-
-3. **Preserves Collection Relationships**: Naturally captures the relationships between collections through the LLM-driven query translation process.
-
-4. **Scientific Validity**: Impact scores reflect actual degradation in precision and recall when collections are ablated.
-
-5. **Maintainability**: Follows Indaleko's architectural patterns and reuses existing code.
+1. **Scientific Validity**: All ablated queries are compared against the same canonical truth set
+2. **Simplicity**: One truth set per query is easier to understand and maintain
+3. **Debugging**: Errors are more meaningful and point to real issues rather than architectural problems
+4. **Consistency**: Metrics are calculated more consistently, leading to more reliable experimental results
 
 ## Implementation Plan
 
-1. **Create AblationQueryPipeline Class**: Adapt the query pipeline components from `query/cli.py` for ablation testing.
+1. Update the AblationTester class to use a single canonical truth model
+2. Modify experiment_runner.py to generate unified truth sets
+3. Update all methods that reference truth data to use the new model
+4. Add backward compatibility for existing experiments if needed
+5. Add documentation on the new approach
 
-2. **Update AblationTester**: Integrate the pipeline into the ablation tester, replacing the current mechanism.
+## Data Migration Considerations
 
-3. **Enhance Metric Calculation**: Ensure metrics are calculated based on actual query results compared to truth data.
+For existing truth data, we may need a migration script to consolidate collection-specific truth into unified truth sets. This can be done on-demand as experiments run or as a one-time migration.
 
-4. **Visualization Enhancements**: Update visualization components to display collection relationships based on actual impact measurements.
+## Code Examples
 
-5. **Implement Cross-Collection Tests**: Add support for measuring higher-order impacts when multiple collections are ablated simultaneously.
+### Updating the ablation_tester.py with the Unified Truth Model
 
-## Conclusion
+```python
+def store_unified_truth_data(self, query_id: uuid.UUID, unified_matching_entities: dict[str, list[str]]) -> bool:
+    """Store a unified truth set for a query across all collections.
 
-This design ensures that our ablation testing framework will provide scientifically valid measurements of how different activity data types impact search precision and recall. By integrating with Indaleko's existing query pipeline, we'll capture authentic behaviors and relationships without relying on arbitrary simulation factors.
+    Args:
+        query_id: The UUID of the query
+        unified_matching_entities: Dictionary mapping collection names to matching entity keys
+
+    Returns:
+        bool: True if the operation was successful
+    """
+    if not self.db:
+        self.logger.error("No database connection available")
+        sys.exit(1)
+
+    # Ensure the Truth Collection exists
+    if not self.db.has_collection(self.TRUTH_COLLECTION):
+        self.db.create_collection(self.TRUTH_COLLECTION)
+        self.logger.info(f"Created unified truth collection {self.TRUTH_COLLECTION}")
+
+    # Create the truth document
+    truth_doc = {
+        "_key": str(query_id),
+        "query_id": str(query_id),
+        "matching_entities": unified_matching_entities,
+        "collections": list(unified_matching_entities.keys()),
+        "timestamp": int(time.time())
+    }
+
+    collection = self.db.collection(self.TRUTH_COLLECTION)
+
+    # Check if a document with this query_id already exists
+    existing = collection.get(str(query_id))
+    if existing:
+        self.logger.info(f"Updating existing truth data for query {query_id}")
+        collection.update(truth_doc)
+    else:
+        self.logger.info(f"Creating new unified truth data for query {query_id}")
+        collection.insert(truth_doc)
+
+    return True
+```
+
+### Updating the experimental/experiment_runner.py with the Unified Truth Model
+
+```python
+def generate_query_truth_data(self, query_id: uuid.UUID, query_text: str) -> bool:
+    """Generate truth data for a query across all collections.
+
+    This method executes the query against each collection with all filters
+    enabled, then stores a unified truth document containing the expected
+    matches for all collections.
+
+    Args:
+        query_id: The UUID of the query
+        query_text: The query text
+
+    Returns:
+        bool: True if truth data was generated successfully
+    """
+    self.logger.info(f"Generating unified truth data for query {query_id}: '{query_text}'")
+
+    # Initialize the ablation tester if not already done
+    if not self.ablation_tester:
+        self.ablation_tester = AblationTester()
+
+    # Track matching entities for each collection
+    unified_truth = {}
+
+    # For each collection, execute the query and record matching entities
+    for collection_name in self.collections:
+        # Skip collections that don't exist (this can happen with optional collections)
+        if not self.ablation_tester.db.has_collection(collection_name):
+            self.logger.warning(f"Collection {collection_name} does not exist, skipping truth generation")
+            continue
+
+        # Execute the query against this collection (with all filters enabled)
+        results, _, _ = self.ablation_tester.execute_query(
+            query_id=query_id,
+            query=query_text,
+            collection_name=collection_name,
+            limit=self.query_limit
+        )
+
+        # Extract the keys of matching entities
+        matching_keys = [doc.get("_key") for doc in results if doc.get("_key")]
+        unified_truth[collection_name] = matching_keys
+
+        self.logger.info(f"Found {len(matching_keys)} matching entities in {collection_name} for query {query_id}")
+
+    # Store the unified truth data
+    success = self.ablation_tester.store_unified_truth_data(query_id, unified_truth)
+    if not success:
+        self.logger.error(f"Failed to store unified truth data for query {query_id}")
+        return False
+
+    return True
+```
+
+## Testing Strategy
+
+To validate the unified truth model:
+
+1. **Unit Tests**: Create unit tests for the new store_unified_truth_data and get_unified_truth_data methods
+2. **Integration Tests**: Test the integration of truth generation, storage, and metrics calculation
+3. **Consistency Tests**: Verify that ablation experiments produce consistent metrics with the unified truth model
+4. **Backward Compatibility**: Ensure existing experiments can still run with minimal changes
+
+## Summary
+
+The unified truth model is a conceptually correct approach to truth data in the ablation framework:
+
+1. Truth is defined per query, not per collection
+2. Each query has one canonical set of expected matches
+3. Metrics are calculated against this canonical truth set
+4. This ensures scientific validity and consistency
+
+This approach aligns better with Indaleko's filtering model and provides a more reliable foundation for ablation experiments.

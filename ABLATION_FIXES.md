@@ -126,6 +126,64 @@ The following changes ensure proper handling of empty truth data:
    - Modified the related collection handling to ensure we always pass empty lists, not lists with non-existent entities
    - Added clear comments documenting the rationale for this approach
 
+## Collection Update Syntax Fix
+
+After resolving the truth data and cross-collection issues, we encountered a new error:
+
+```
+ERROR:research.ablation.ablation_tester:CRITICAL: Failed to store truth data: string indices must be integers, not 'str'
+```
+
+### Root Cause Analysis
+
+1. **Incorrect Update Syntax**: In the `store_truth_data` method in `ablation_tester.py`, the collection.update() method was being called with an incorrect parameter structure:
+
+```python
+# Incorrect syntax
+collection.update(composite_key, {"matching_entities": list(new_entities)})
+```
+
+ArangoDB's collection.update() method requires a document with the "_key" field to identify the document to update, not just the key as a string.
+
+2. **Inconsistent Update Handling**: The way updates were handled varied across the codebase, with some places using the correct document structure and others using the incorrect string key.
+
+### Fixed Implementation
+
+The following changes fix the update syntax issue:
+
+1. **Corrected Update Syntax**:
+   - Changed the update call to use the proper document structure:
+
+```python
+# Correct syntax
+collection.update({"_key": composite_key, "matching_entities": list(new_entities)})
+```
+
+2. **Consistent Update Pattern**:
+   - Applied the correct update pattern consistently throughout the codebase
+   - Added comments documenting the expected ArangoDB update syntax
+
+3. **Enhanced Error Handling**:
+   - Added more detailed error logging to help identify the root cause faster if similar issues occur
+
+### Other Bug Fixes
+
+1. **AQL Bind Variable Error**:
+   - Fixed a bug where `task_type` was being unconditionally added to bind variables even when it wasn't used in queries
+   - Modified the `_prepare_cross_collection_bind_vars` method to only include bind variables that are actually used in the query
+
+2. **Duplicate Truth Data Generation**:
+   - Added tracking of processed query/collection pairs using a set to prevent redundant truth data generation
+   - This eliminates problems with multiple truth data entries for the same query/collection combination
+
+### Testing and Verification
+
+The fixes have been tested with:
+1. Multiple runs of the ablation test framework
+2. Direct testing of the collection.update() syntax
+3. Verification that no "string indices must be integers" errors occur
+4. Validation that truth data is correctly stored and retrieved
+
 ### Remaining Issue: Truth Collection Initialization
 
 Despite fixing the entity validation issues, experiments sometimes still encountered errors due to race conditions or parallel executions:
@@ -225,14 +283,14 @@ def initialize_truth_collection():
     """Initialize the AblationQueryTruth collection with empty records."""
     logger = logging.getLogger(__name__)
     logger.info("Initializing truth collection...")
-    
+
     try:
         from db.db_config import IndalekoDBConfig
-        
+
         # Connect to the database
         db_config = IndalekoDBConfig()
         db = db_config.get_arangodb()
-        
+
         # Define the activity collections and truth collection
         activity_collections = [
             "AblationLocationActivity",
@@ -243,7 +301,7 @@ def initialize_truth_collection():
             "AblationMediaActivity",
         ]
         truth_collection = "AblationQueryTruth"
-        
+
         # Clear the truth collection if it exists
         if db.has_collection(truth_collection):
             logger.info(f"Clearing existing data from {truth_collection}")
@@ -252,18 +310,18 @@ def initialize_truth_collection():
             # Create the collection if it doesn't exist
             db.create_collection(truth_collection)
             logger.info(f"Created truth collection {truth_collection}")
-        
+
         # Create initial empty truth data for each activity collection
         for i, collection_name in enumerate(activity_collections):
             # Skip collections that don't exist
             if not db.has_collection(collection_name):
                 logger.warning(f"Collection {collection_name} does not exist, skipping")
                 continue
-            
+
             # Generate a unique ID for this collection's empty entry
             query_id = f"00000000-0000-0000-0000-{i+1:012d}"
             composite_key = f"init_{collection_name}"
-            
+
             # Create a document with empty matching entities
             truth_doc = {
                 "_key": composite_key,
@@ -272,11 +330,11 @@ def initialize_truth_collection():
                 "matching_entities": [],
                 "collection": collection_name,
             }
-            
+
             # Insert the document
             db.collection(truth_collection).insert(truth_doc)
             logger.info(f"Created empty truth data for {collection_name}")
-        
+
         logger.info("Truth collection initialized successfully")
         return True
     except Exception as e:
@@ -318,6 +376,50 @@ python run_verified_ablation_experiment.py --output-dir ./my_experiment_results
 # Run without visualization (faster)
 python run_verified_ablation_experiment.py --no-visualize
 ```
+
+## Unified Truth Data Model Implementation
+
+The most significant improvement to the ablation framework is the implementation of a unified truth data model. This addresses the fundamental architectural issue where truth data was previously fragmented across collections.
+
+### The Problem
+- The framework was storing separate truth data per collection-query pair
+- This led to "No truth data found" errors and scientifically inconsistent metrics
+- Cross-collection queries were particularly problematic
+
+### The Solution
+We implemented a unified truth data model with these key components:
+
+1. **Single Source of Truth**:
+   - Each query has one canonical truth set containing entities from all relevant collections
+   - Truth data is stored by query ID, not by collection-query pair
+   - The model properly handles cross-collection relationships
+
+2. **Scientific Integrity**:
+   - Ensures that all ablation tests are evaluated against the same canonical truth set
+   - Prevents "shifting truth" between tests, which would undermine scientific validity
+   - Follows strict fail-stop principles when data integrity issues are detected
+
+3. **Key Implementation Details**:
+   - Added `store_unified_truth_data` and `get_unified_truth_data` methods to `AblationTester`
+   - Modified `calculate_metrics` to work with the unified truth model
+   - Updated the experiment runner to generate unified truth data
+   - Made cross-collection query handling use the unified truth model
+   - Maintained backward compatibility for existing experiment data
+
+### Strict "No Truth Data" Handling
+
+Implemented a strict fail-stop approach when missing truth data is detected:
+
+```python
+if not truth_data:
+    self.logger.error(f"CRITICAL: No truth data available for query {query_id} in collection {collection_name}.")
+    raise RuntimeError(f"Invalid Data State: No truth data available for metrics calculation for {query_id} in {collection_name}")
+```
+
+This ensures:
+- Immediate failure with an informative error message
+- Scientific integrity by preventing experiments from continuing with missing or invalid data
+- Better debugging information with stack traces
 
 ## Next Steps
 
