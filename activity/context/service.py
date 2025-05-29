@@ -86,7 +86,7 @@ class IndalekoActivityContextService(IndalekoSingleton):
             "message": "The document failed schema validation.  Sorry!",
         }
         self.cursors = {}
-        self.updated = False
+        self.updated = True # new handle, so we need to write it
         self.referenced = False
 
     def update_cursor(
@@ -133,6 +133,7 @@ class IndalekoActivityContextService(IndalekoSingleton):
     def get_activity_handle(self) -> uuid.UUID:
         """Get the activity handle for the context."""
         self.referenced = True
+        self.write_activity_context_to_database()
         return self.handle
 
     def get_activity_context_data(
@@ -203,6 +204,7 @@ class IndalekoActivityContextService(IndalekoSingleton):
             been returned.
         """
         if not self.updated or not self.referenced:
+            ic("No updates or references to write to the database.")
             return False
 
         doc = IndalekoActivityContextDataModel(
@@ -213,7 +215,7 @@ class IndalekoActivityContextService(IndalekoSingleton):
         self.handle = uuid.uuid4()
         data = doc.build_arangodb_doc(_key=self.handle)
         self._private_collection.insert(data)
-        self.updated = False
+        self.updated = True
         self.referenced = False
         return True
 
@@ -236,6 +238,8 @@ class IndalekoActivityContextTest:
     def test_command(self) -> None:
         """Test the activity context data."""
         ic("test_command called")
+        activity_handle = IndalekoActivityContextService().get_activity_handle()
+        ic(f"Activity handle: {activity_handle}")
 
     def schema_command(self) -> None:
         """Show the data schema."""

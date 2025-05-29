@@ -39,7 +39,7 @@ if os.environ.get("INDALEKO_ROOT") is None:
 
 # Indaleko imports
 from activity.characteristics import ActivityDataCharacteristics
-from activity.collectors.collaboration.base import CollaborationCollector
+from activity.collectors.collaboration.collaboration_base import CollaborationCollector
 from activity.collectors.collaboration.data_models.calendar_event import CalendarEvent
 from activity.collectors.collaboration.semantic_attributes import (
     ADP_COLLABORATION_CALENDAR,

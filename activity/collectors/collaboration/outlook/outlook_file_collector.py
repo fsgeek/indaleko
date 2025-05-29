@@ -43,7 +43,7 @@ if os.environ.get("INDALEKO_ROOT") is None:
 from activity.characteristics import ActivityDataCharacteristics
 from activity.collectors.collaboration.collaboration_base import CollaborationCollector
 from activity.collectors.collaboration.data_models.email_file_share import (
-    EmailFileShareData,
+    EmailFileShareCollaborationDataModel as EmailFileShareData,
 )
 from activity.collectors.collaboration.data_models.shared_file import SharedFileData
 

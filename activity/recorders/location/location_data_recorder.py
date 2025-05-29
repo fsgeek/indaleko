@@ -76,10 +76,20 @@ class BaseLocationDataRecorder(RecorderBase):
             "min_movement_change_required",
             self.default_min_movement_change_required,
         )
+        if not isinstance(self.min_movement_change_required, (int, float)):
+            raise TypeError(
+                f"min_movement_change_required is not an int or float {type(self.min_movement_change_required)}",
+            )
+        self.min_movement_change_required = float(self.min_movement_change_required)
         self.max_time_between_updates = kwargs.get(
             "max_time_between_updates",
             self.default_max_time_between_updates,
         )
+        if not isinstance(self.max_time_between_updates, (int, float)):
+            raise TypeError(
+                f"max_time_between_updates is not an int or float {type(self.max_time_between_updates)}",
+            )
+        self.max_time_between_updates = float(self.max_time_between_updates)
         self.provider = kwargs.get("provider")
         if self.provider is not None and not isinstance(self.provider, CollectorBase):
             raise TypeError(f"provider is not a CollectorBase {type(self.provider)}")
@@ -175,7 +185,7 @@ class BaseLocationDataRecorder(RecorderBase):
             data1.Location.timestamp,
             data2.Location.timestamp,
         )
-        return distance > self.min_movement_change_required or time_delta > self.max_time_between_updates
+        return distance > self.min_movement_change_required or abs(time_delta) > self.max_time_between_updates
 
     @staticmethod
     def get_latest_db_update_dict(collection: IndalekoCollection) -> dict | None:

@@ -474,7 +474,8 @@ def main():
 
     try:
         # Create the collector with a token file
-        collector = DiscordFileShareCollector(token_file="./config/discord-token.json")
+        config_path = os.path.join(os.environ.get("INDALEKO_ROOT", "."), "config", "discord-token.json")
+        collector = DiscordFileShareCollector(token_file=config_path)
 
         # Create the recorder with the collector
         recorder = DiscordFileShareRecorder(collector=collector)

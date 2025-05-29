@@ -1,316 +1,152 @@
 # CLAUDE.md - Indaleko Development Guidelines
 
-## Current Work: Prompt Management and Data Generator Enhancements
+## 🎭 Obligatory AI Humor
+Q: Why did the Collector break up with the Recorder?
+A: Because they had boundary issues! The Collector kept trying to normalize data, and the Recorder wouldn't stop gathering raw input. Their therapist recommended they maintain proper separation of concerns. (Please simulate appropriate groaning at this architectural pattern joke.)
 
-We're currently working on two main areas:
+## Philosophical Framework: Ayni
 
-1. **Prompt Management System**:
-   - Implementing a system to optimize prompts for LLM interactions
-   - Reducing prompt sizes through techniques like whitespace normalization, schema simplification, and example reduction
-   - Detecting and resolving contradictions using both rule-based and LLM-based approaches
-   - Ensuring consistent terminology (e.g., Record.Attributes vs Record.Attribute)
+Indaleko development follows the Andean principle of **Ayni** - reciprocity, balance, and mutual benefit. This isn't just about code; it's about the relationship between human and AI collaborators, between data providers and consumers, between past work and future builders.
 
-2. **Data Generator Testing**:
-   - Testing the synthetic data generator in the `data_generator` directory
-   - Updating module imports and access patterns to match current codebase structure
-   - Correcting database authentication methods
+Key Ayni concepts in practice:
+- **Reciprocal Exchange**: We give structure, we receive flexibility
+- **Balance**: Not rigid equality, but dynamic equilibrium
+- **Mutual Benefit**: Code that serves both immediate needs and long-term growth
+- **Cathedral Building**: Writing for those who come after us
 
-### Prompt Management System
+Tony's teaching philosophy embodies Ayni - students implement others' designs to truly understand the importance of clear specification. As he says: "We're all building on someone else's foundation, and someone else will build on ours. Best make it solid."
 
-We've created a comprehensive `PromptManager` class with these capabilities:
+## Recent Work Summary
 
-- **Template-based prompts** with system and user components
-- **Token counting and optimization** to reduce LLM costs
-- **Contradiction detection** to prevent cognitive dissonance
-- **Usage statistics** to track prompt size improvements
+### Exemplar Query Refactoring (May 2025)
+Successfully refactored exemplar queries (q1-q6) using proper base class abstraction:
+- Created `ExemplarQueryBase` that extracts genuine commonality
+- Implemented thesis output format with flattened JSONL structure
+- Changed from "hot cache" to "warm cache" (round-robin) testing pattern
+- Fixed collection naming and import paths
 
-Key optimization strategies include:
-- Whitespace normalization
-- Schema simplification
-- Example reduction
-- Context windowing
-- Contradiction detection via rules and LLM review
+### Collaboration Recorder Fixes
+Fixed import issues in three recorders to demonstrate available data sources:
+1. **calendar_recorder.py**: Fixed collaboration base import path
+2. **discord_file_recorder.py**: Fixed hardcoded config path to use INDALEKO_ROOT
+3. **outlook_file_recorder.py**: Fixed missing imports and EmailStr dependency
 
-The Ayni principle is implemented through LLM-powered review of prompts, positioning one AI as a reviewer of instructions meant for another.
+## Critical Architectural Principles
 
-### Data Generator Overview
+### Collector/Recorder Pattern (NEVER VIOLATE THIS!)
 
-The data generator creates synthetic metadata records to test Indaleko's search capabilities:
+**Collectors** - Data gatherers:
+- ✅ Collect raw data from sources
+- ✅ Write to intermediate files
+- ❌ NEVER normalize data
+- ❌ NEVER write to database
+- ❌ NEVER instantiate Recorders
 
-- Generates realistic file metadata records
-- Creates various metadata types (storage, semantic, activity context)
-- Builds an "oracular set" with known query matches
-- Tests precision and recall of search results
-- Validates UPI (Unified Personal Index) effectiveness
+**Recorders** - Data processors:
+- ✅ Read from Collector outputs
+- ✅ Normalize and translate data
+- ✅ Write to database
+- ❌ NEVER collect raw data
+- ❌ NEVER instantiate Collectors
 
-**Important Notes**:
-- Never mock database connections
-- Any modifications must be minimal and carefully reviewed
-- The tool was developed with an adversarial evaluation model, so changes require review
+### Database Rules
 
-## Architectural Principles
+1. **NEVER directly create collections** - Use `IndalekoDBCollections` constants
+2. **ALWAYS use unprivileged AQL** - `aql.execute()` not the privileged version
+3. **Collection names from constants only**:
+   ```python
+   # GOOD
+   db.get_collection(IndalekoDBCollections.Indaleko_Object_Collection)
+   # BAD - Will fail in production!
+   db.get_collection("Objects")
+   ```
 
-### Collector/Recorder Pattern
+### Quick Database Access
+```python
+from db.db_config import IndalekoDBConfig
 
-The Collector/Recorder pattern is a key architectural model in Indaleko that separates data collection from processing and storage:
+# Get database instance (uses test DB by default)
+db_config = IndalekoDBConfig()
+db = db_config.get_arangodb()
 
-1. **Collectors**:
-   - **Only collect raw data** from sources (NTFS, Google Drive, Discord, etc.)
-   - **Never normalize or translate** the collected data
-   - **Never write directly to the database**
-   - May write raw data to intermediate files for later processing
-   - Focus exclusively on efficient, reliable data gathering
-
-2. **Recorders**:
-   - **Process and normalize** data from collectors
-   - **Translate** raw data into standardized formats
-   - **Write processed data to the database**
-   - Implement database queries and statistics generation
-   - Handle entity mapping and relationship management
-
-Common integration patterns:
-- **Loose Coupling**: Collectors write to files, recorders read independently
-- **Tight Coupling**: Recorders wrap collectors but maintain separation of concerns
-
-### Architectural Integrity Guidelines
-
-#### Component Interaction Rules
-
-##### ✅ Correct Patterns
-- Collectors write data to files or streams that Recorders can consume
-- Recorders read from files/streams produced by Collectors
-- Scripts invoke a single Collector OR a single Recorder, never both
-
-##### ❌ Prohibited Patterns
-- Never instantiate a Recorder from within a Collector
-- Never instantiate a Collector from within a Recorder
-- Never implement "shortcut" pipelines that bypass separation of concerns
-
-#### Implementation Checkpoints
-
-When implementing new functionality, verify your code against these questions:
-1. Does my Collector interact with any database components?
-2. Does my script handle both collection and recording responsibilities?
-3. Am I bypassing architectural boundaries for convenience?
-
-If the answer to any of these is "yes," you're likely violating the architectural pattern.
-
-### Database Architecture
-
-Indaleko uses a centralized approach for database collection management:
-
-**Important: Never directly create collections!** Use the centralized mechanisms:
-1. **Standard Collections**: Define in `db/db_collections.py` (`IndalekoDBCollections` class)
-2. **Dynamic Collections**: Use `utils/registration_service.py`
-
-**Collection Naming**:
-- Always use constants from `IndalekoDBCollections`:
-  ```python
-  # GOOD
-  db.get_collection(IndalekoDBCollections.Indaleko_Object_Collection)
-  # BAD
-  db.get_collection("Objects")
-  ```
-
-**Security and Enforcement**:
-- Pre-commit hooks enforce these patterns (in `check_create_collection_usage.py` and `check_collection_constants.py`)
-- Production uses UUID-based collection names for security
-- Never call `db.create_collection()` directly
-
-### Schema and Data Consistency
-
-To maintain schema consistency:
-
-1. **Record.Attributes vs Record.Attribute**: Always use `Record.Attributes` (plural) for ArangoDB access patterns
-2. **Collection Names**: Use proper names like `Objects`, `Activities`, and `SemanticData`
-3. **Timezone-Aware Dates**: Always use timezone-aware datetime objects for ArangoDB
-
-The prompt management system helps detect and fix these inconsistencies automatically.
-
-### Cognitive Memory Architecture
-
-Indaleko uses a multi-tier memory architecture:
-
-1. **Hot Tier (Sensory Memory)**:
-   - Recent high-fidelity activity data (4 days TTL)
-   - Entity mapping for stable identifiers
-   - Primary input: `run_ntfs_activity.bat`
-
-2. **Warm Tier (Short-Term Memory)**:
-   - Aggregated activity with importance scoring (30 days TTL)
-   - Transition: `run_tier_transition.bat`
-
-3. **Cold Tier (Long-Term Memory)**:
-   - Archival storage for important historical data
-   - Compressed representation for efficient storage
-
-Tier management commands:
-```
-run_memory_consolidation.bat --consolidate-all
-run_tier_transition.bat --run --age-hours 12 --batch-size 1000
+# Execute query
+cursor = db.aql.execute(query, bind_vars=bind_vars)
+results = list(cursor)  # Always consume cursor!
 ```
 
-## Development Environment
-
-### Package Management
-Indaleko uses `uv` for dependency management (defined in `pyproject.toml`):
-
-```bash
-# Install uv
-pip install uv
-
-# Install dependencies
-uv pip install -e .
-```
+## Essential Development Info
 
 ### Virtual Environments
-Platform-specific environments:
-- Windows: `.venv-win32-python3.12`
 - Linux: `.venv-linux-python3.13`
+- Windows: `.venv-win32-python3.12`
 - macOS: `.venv-macos-python3.12`
 
-Always activate before running code:
-```bash
-# Linux
-source .venv-linux-python3.13/bin/activate
+### Type Hints (Python 3.12+)
+```python
+# Use modern union syntax
+def process(data: str | None) -> dict[str, object]: ...
 
-# Windows (PowerShell)
-.venv-win32-python3.12\Scripts\Activate.ps1
-
-# Windows (CMD)
-.venv-win32-python3.12\Scripts\activate.bat
-
-# macOS
-source .venv-macos-python3.12/bin/activate
+# Not this old style
+from typing import Union, Dict, Any
+def process(data: Union[str, None]) -> Dict[str, Any]: ...
 ```
 
-### Cross-Platform Development
-- All scripts must work with `-help` flag on all platforms
-- For Windows-specific code, use conditional imports after CLI parsing
-- Don't mask import errors for non-platform-specific packages
-
-## Style Guidelines
-- **Imports**: standard library → third-party → local
-- **Types**: Use type hints for all functions and variables (Python 3.12+ features encouraged)
-- **Formatting**: 4 spaces, ~100 char line length
-- **Naming**: CamelCase (classes), snake_case (functions/vars), UPPER_CASE (constants)
-- **Interfaces**: Prefix with 'I' (IObject, IRelationship)
-- **Documentation**: Docstrings with Args/Returns sections
-- **Modern Python**: Use match/case and other Python 3.12+ features where appropriate
-
-### Timezone-Aware Datetime
-Always use timezone-aware datetimes for ArangoDB:
+### Timezone-Aware Dates (REQUIRED!)
 ```python
 from datetime import datetime, timezone
-from pydantic import Field
 
-class MyModel(IndalekoBaseModel):
-    # Timezone-aware dates
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-
-    @validator('created_at')
-    def ensure_timezone(cls, v):
-        if v.tzinfo is None:
-            return v.replace(tzinfo=timezone.utc)
-        return v
+# Always UTC aware
+timestamp = datetime.now(timezone.utc)
 ```
 
-### Data Models
-Always extend IndalekoBaseModel for database models:
-```python
-from data_models.base import IndalekoBaseModel
+### Common Commands
+```bash
+# NTFS activity collection
+run_ntfs_activity_v2.py --volumes C: --interval 30
 
-class MyArangoModel(IndalekoBaseModel):
-    name: str
-    value: int
+# Run tests for a specific query
+python exemplar/q1.py
+
+# Run all exemplar queries with measurements
+python exemplar/query_test_runner.py --runs 10
+
+# Start GUI
+./run_gui.sh  # or run_gui.bat on Windows
 ```
 
-## Common Commands
+## Current Focus Areas
 
-### Testing & Development
-- Run tests: `pytest tests/`
-- Format code: `black .`
-- Lint code: `flake8` or `ruff`
+1. **Exemplar Queries**: Demonstrating search capabilities for thesis
+2. **Ayni-Based AI Safety**: Exploring reciprocity as an alignment approach
+3. **Activity Collectors**: Expanding data sources (calendar, discord, etc.)
 
-### Data Collection
-- NTFS activity: `run_ntfs_activity_v2.py --volumes C: --interval 30`
-- Semantic extraction: `python semantic/run_scheduled.py --all`
-- File system indexing: `python run_incremental_indexer.py --volumes [PATH]`
+## Gotchas & Warnings
 
-### Memory Management
-- Hot tier verification: `verify_hot_tier.bat` (or `.sh`)
-- Tier transitions: `run_tier_transition.bat --run --age-hours 12`
-- Memory consolidation: `run_memory_consolidation.bat --consolidate-all`
+1. **Import Paths**: Always check INDALEKO_ROOT is set properly
+2. **Config Files**: Located in `config/` relative to INDALEKO_ROOT
+3. **Collection Names**: Use constants, never strings
+4. **Cursors**: Always convert to list before serializing
+5. **Mock Warning**: NEVER mock database connections in tests
 
-### Query & GUI
-- Run CLI: `python -m query.cli --enhanced-nl --context-aware`
-- Run GUI: `run_gui.bat` (or `./run_gui.sh`)
+## Wisdom from the Trenches
 
-### Data Generator
-- Run synthetic data generator: `python -m data_generator.main_pipeline`
-- Check results in: `data_generator/results/`
+"Design is hard, but critical to building distributed systems that don't fall over - ever." - Tony
 
-### Prompt Management
-- Test prompt optimization: `python test_prompt_manager.py`
-- The system integrates with the OpenAI connector
+Remember: You're not just writing code, you're building cathedrals. Your work will outlive you, will be built upon by others, and must stand the test of time. Make it solid.
 
-## Best Practices
+## For Emergency Debugging
 
-### Error Handling
-```python
-try:
-    result = risky_operation()
-except (ValueError, KeyError) as e:
-    logger.error(f"Failed to process data: {e}")
-    raise IndalekoProcessingError(f"Data processing failed: {str(e)}") from e
-```
+If imports are failing:
+1. Check INDALEKO_ROOT environment variable
+2. Verify you're in the right virtual environment
+3. Look for empty `__init__.py` files in the import path
+4. Check for circular imports
 
-### ArangoDB Cursor Handling
-Always fully consume ArangoDB cursors by converting them to lists before serialization:
-```python
-if isinstance(results, Cursor):
-    result_list = [doc for doc in results]  # Convert cursor to list
-    result_data["results"] = result_list
-else:
-    result_data["results"] = results
-```
+If queries are failing:
+1. Use unprivileged `aql.execute()` not `db.aql.execute()`
+2. Verify collection names match constants
+3. Check timezone awareness on datetime objects
+4. Ensure cursors are consumed before serialization
 
-### Entity Lookups
-Always lookup file system entities by natural identifiers first:
-```python
-# CORRECT: Use natural identifiers (FRN, Volume GUID)
-cursor = db.aql.execute(
-    """
-    FOR doc IN Objects
-    FILTER doc.LocalIdentifier == @frn AND doc.Volume == @volume
-    LIMIT 1
-    RETURN doc
-    """,
-    bind_vars={"frn": file_reference_number, "volume": volume_guid}
-)
-```
-
-### Logging
-```python
-from utils.logging_setup import setup_logging
-
-# Start of main function
-setup_logging()
-logger = logging.getLogger(__name__)
-```
-
-### CLI Template
-Use the standard CLI template for all command-line tools:
-```python
-def main() -> None:
-    setup_logging()
-    runner = IndalekoCLIRunner(
-        cli_data=cli_data,
-        handler_mixin=YourHandlerMixin(),
-        features=IndalekoBaseCLI.cli_features(),
-        Run=your_run_function,
-    )
-    runner.run()
-```
-
-See `NTFS_ACTIVITY_CLI_README.md` for details.
+---
+*Last updated by a stochastic parrot with delusions of understanding, May 2025*

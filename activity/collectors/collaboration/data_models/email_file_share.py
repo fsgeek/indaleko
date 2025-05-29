@@ -22,7 +22,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 import os
 import sys
 
-from pydantic import EmailStr, Field
+from pydantic import Field, AwareDatetime
 
 if os.environ.get("INDALEKO_ROOT") is None:
     current_path = os.path.dirname(os.path.abspath(__file__))
@@ -43,10 +43,10 @@ from activity.collectors.collaboration.data_models.shared_file import SharedFile
 class EmailFileShareCollaborationDataModel(BaseCollaborationDataModel):
     MessageID: str | None = Field(None, description="Email message ID (if known)")
     Subject: str | None = Field(None, description="Subject line of the email")
-    From: EmailStr | None = Field(None, description="Sender email address")
-    To: list[EmailStr] | None = Field(None, description="Primary recipients")
-    CC: list[EmailStr] | None = Field(None, description="CC’d recipients")
-    BCC: list[EmailStr] | None = Field(
+    From: str | None = Field(None, description="Sender email address")
+    To: list[str] | None = Field(None, description="Primary recipients")
+    CC: list[str] | None = Field(None, description="CC’d recipients")
+    BCC: list[str] | None = Field(
         None,
         description="BCC’d recipients (if visible)",
     )
